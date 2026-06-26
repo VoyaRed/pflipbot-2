@@ -38,7 +38,7 @@
         .card:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4); }
         
         .card-header { padding: 15px 20px; font-weight: bold; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center; }
-        .card-body { padding: 25px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .card-body { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; flex-grow: 1; }
         
         .expired { opacity: 0.8; }
         .expired .card-header { background: #353547; color: var(--subtext); }
@@ -55,7 +55,7 @@
         .next .card-header { background: var(--primary); color: white; }
         
         .prediction-badge { 
-            padding: 12px 20px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; 
+            padding: 10px 15px; border-radius: 12px; font-size: 1.4rem; font-weight: 800; width: 100%; 
             text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
             transition: all 0.3s ease;
         }
@@ -65,9 +65,29 @@
 
         .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; margin-bottom: 5px; }
         
-        .progress-bg { background: #3b3a43; border-radius: 8px; height: 16px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); }
+        .progress-bg { background: #3b3a43; border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); margin-bottom: 10px; }
         .progress-fill { background: linear-gradient(90deg, #5324ab, #7645d9); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
         
+        /* New Price Box Styling matching PancakeSwap */
+        .price-box {
+            background: #1e1d24;
+            border-radius: 16px;
+            padding: 15px;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: left;
+            border: 1px solid #353547;
+            margin-top: auto;
+        }
+        .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
+        .main-price { font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; }
+        .main-price.up { color: var(--up); }
+        .main-price.down { color: var(--down); }
+        .main-price.waiting { color: white; }
+        .price-row { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px; }
+        .price-row span:first-child { color: var(--subtext); font-weight: 600; }
+        .price-row span:last-child { font-weight: bold; }
+
         .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
         
         @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
@@ -80,6 +100,7 @@
         <div id="tv-container" class="chart-box"></div>
         
         <div class="rounds-container">
+            <!-- EXPIRED CARD -->
             <div class="card expired">
                 <div class="card-header">
                     <span>Expired</span>
@@ -88,39 +109,67 @@
                 <div class="card-body">
                     <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="prev-conf" class="confidence-tag">--%</span></div>
                     <div id="prev-bet" class="prediction-badge pred-waiting">---</div>
-                    <div style="font-size: 1rem; font-weight: bold; color: var(--subtext); margin-top: 10px; width: 100%;">Actual Result</div>
-                    <div id="prev-result" class="prediction-badge pred-waiting">---</div>
+                    <div class="stat-row" style="margin-top: 5px;"><span style="font-weight: bold;">Result</span></div>
+                    <div id="prev-result" class="prediction-badge pred-waiting" style="padding: 6px; font-size: 1.1rem;">---</div>
+
+                    <div class="price-box">
+                        <div class="price-label">Closed Price</div>
+                        <div id="prev-close-price" class="main-price waiting">---</div>
+                        <div class="price-row">
+                            <span>Locked Price:</span>
+                            <span id="prev-lock-price">---</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
+            <!-- LIVE CARD -->
             <div class="card live">
+                <div class="progress-bg" style="border-radius: 0; margin: 0; height: 6px;"><div id="progress-bar" class="progress-fill"></div></div>
                 <div class="card-header">
-                    <span>▶ LIVE (Locked)</span>
+                    <span>▶ LIVE</span>
                     <span id="live-epoch">#---</span>
                 </div>
                 <div class="card-body" style="width: 100%; box-sizing: border-box;">
                     <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="live-conf" class="confidence-tag">--%</span></div>
                     <div id="live-bet" class="prediction-badge pred-waiting">---</div>
-                    <div style="text-align: center; margin-top: 15px; font-size: 1.1rem; color: var(--primary); font-weight: bold;">Waiting for Price...</div>
+
+                    <div class="price-box">
+                        <div class="price-label">Last Price</div>
+                        <div id="live-last-price" class="main-price waiting">---</div>
+                        <div class="price-row">
+                            <span>Locked Price:</span>
+                            <span id="live-lock-price">---</span>
+                        </div>
+                        <div class="price-row">
+                            <span>Prize Pool:</span>
+                            <span id="live-prize-pool">---</span>
+                        </div>
+                    </div>
+                    <div id="time-left" style="text-align: center; font-weight: 800; font-size: 1.2rem; color: var(--primary);">--:--</div>
                 </div>
             </div>
 
+            <!-- NEXT CARD -->
             <div class="card next">
                 <div class="card-header">
-                    <span>▶ Next (Taking Bets)</span>
+                    <span>▶ Next</span>
                     <span id="next-epoch">#---</span>
                 </div>
                 <div class="card-body">
                     <div class="stat-row"><span style="font-weight: bold;">Bot Target</span><span id="next-conf" class="confidence-tag" style="color: var(--primary);">Calculating...</span></div>
                     <div id="bot-prediction" class="prediction-badge pred-waiting">Waiting...</div>
                     
-                    <div style="width: 100%; margin-top: auto; padding-top: 15px; border-top: 1px solid #353547;">
-                        <div class="stat-row" style="margin-bottom: 10px;">
-                            <span style="color: var(--subtext);">Market RSI:</span>
-                            <span id="live-rsi" style="font-weight: bold;">--</span>
+                    <div class="stat-row" style="margin-top: 15px;">
+                        <span style="color: var(--subtext);">Market RSI:</span>
+                        <span id="live-rsi" style="font-weight: bold;">--</span>
+                    </div>
+                    
+                    <div class="price-box">
+                        <div class="price-row" style="margin: 5px 0;">
+                            <span style="font-size: 1.1rem; color: white;">Prize Pool:</span>
+                            <span id="next-prize-pool" style="font-size: 1.1rem; color: white;">---</span>
                         </div>
-                        <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
-                        <div id="time-left" style="text-align: center; font-weight: 800; margin-top: 5px; font-size: 1.4rem; color: var(--primary);">--:--</div>
                     </div>
                 </div>
             </div>
@@ -173,8 +222,7 @@
 
         async function checkRound() {
             try {
-                // CORRECTED EPOCH MAPPING
-                const currentEpoch = (await contract.currentEpoch()).toNumber(); // The round taking bets
+                const currentEpoch = (await contract.currentEpoch()).toNumber(); 
                 const nextEpoch = currentEpoch; 
                 const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
                 const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
@@ -183,12 +231,7 @@
                 if (liveEpoch > 0) document.getElementById('live-epoch').innerText = `#${liveEpoch}`;
                 if (expiredEpoch > 0) document.getElementById('prev-epoch').innerText = `#${expiredEpoch}`;
 
-                // The timer applies to the NEXT round (when betting closes)
-                const nextRoundData = await contract.rounds(nextEpoch);
-                const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
-                startTimer(lockTimestamp);
-
-                // --- LIVE CARD UPDATE ---
+                // --- LIVE CARD & TIMER UPDATE ---
                 const liveData = getPredictionData(liveEpoch);
                 const liveBetEl = document.getElementById('live-bet');
                 if (liveData) {
@@ -200,7 +243,36 @@
                     document.getElementById('live-conf').innerText = "--%";
                 }
 
+                if (liveEpoch > 0) {
+                    const liveRound = await contract.rounds(liveEpoch);
+                    const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
+                    const totalPool = parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4);
+                    
+                    document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
+                    document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
+                    
+                    // Fetch real-time price from Binance API for "Last Price"
+                    fetch("https://api.binance.us/api/v3/ticker/price?symbol=BNBUSDT")
+                        .then(res => res.json())
+                        .then(data => {
+                            const currentPrice = parseFloat(data.price).toFixed(4);
+                            const priceEl = document.getElementById('live-last-price');
+                            priceEl.innerText = `$${currentPrice}`;
+                            if(currentPrice > lockPrice) { priceEl.className = "main-price up"; }
+                            else if(currentPrice < lockPrice) { priceEl.className = "main-price down"; }
+                        }).catch(() => {});
+
+                    // Move timer to closeTimestamp of the LIVE round
+                    const closeTimestamp = liveRound.closeTimestamp.toNumber();
+                    startTimer(closeTimestamp);
+                }
+
                 // --- NEXT CARD UPDATE ---
+                const nextRoundData = await contract.rounds(nextEpoch);
+                const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
+                const nextPool = parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4);
+                document.getElementById('next-prize-pool').innerText = `${nextPool} BNB`;
+
                 const now = Math.floor(Date.now() / 1000);
                 const secondsLeft = lockTimestamp - now;
                 const nextData = getPredictionData(nextEpoch);
@@ -227,8 +299,6 @@
                         prevBetEl.innerText = expiredData.pred;
                         prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                         document.getElementById('prev-conf').innerText = expiredData.conf;
-                    } else {
-                        prevBetEl.innerText = "No Bet"; prevBetEl.className = "prediction-badge pred-waiting";
                     }
 
                     const prevResultEl = document.getElementById('prev-result');
@@ -239,12 +309,18 @@
                         
                         prevResultEl.innerText = actualResult;
                         prevResultEl.className = `prediction-badge ${actualResult === 'UP' ? 'pred-up' : 'pred-down'}`;
+                        
+                        // Set Prices
+                        document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
+                        const closeEl = document.getElementById('prev-close-price');
+                        closeEl.innerText = `$${closePrice.toFixed(4)}`;
+                        closeEl.className = `main-price ${actualResult === 'UP' ? 'up' : 'down'}`;
+                        
                     } else {
                         prevResultEl.innerText = "Resolving..."; prevResultEl.className = "prediction-badge pred-waiting";
                     }
                 }
 
-                // Verify Results (Verify the round that just expired)
                 if (currentEpoch > lastEpoch && lastEpoch !== 0) {
                     verifyResult(expiredEpoch); 
                 }
@@ -297,15 +373,15 @@
             document.getElementById('next-conf').innerText = confidence;
         }
 
-        function startTimer(lockTimestamp) {
+        function startTimer(targetTimestamp) {
             clearInterval(timerInterval);
             const bar = document.getElementById('progress-bar');
             const text = document.getElementById('time-left');
 
             timerInterval = setInterval(() => {
                 const now = Math.floor(Date.now() / 1000);
-                const secondsLeft = lockTimestamp - now;
-                const total = 300; 
+                const secondsLeft = targetTimestamp - now;
+                const total = 300; // 5 minute rounds
 
                 if (secondsLeft <= 0) {
                     text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval);
