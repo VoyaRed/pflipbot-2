@@ -198,7 +198,8 @@
             "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
         ];
         
-        const CHAINLINK_BNB_USD = "0x0567F232b35FBf0A7e21a2d87e0767571d0234a4";
+        // Lowercased string to satisfy Ethers.js strict checksum requirements
+        const CHAINLINK_BNB_USD = "0x0567f232b35fbf0a7e21a2d87e0767571d0234a4";
         const ABI_CHAINLINK = ["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"];
         
         const RPC_URLS = ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed1.binance.org"];
@@ -206,7 +207,8 @@
         let lastLockedPrice = 0;
 
         function connectWebSocket() {
-            const ws = new WebSocket('wss://stream.binance.us:9443/ws/bnbusdt@ticker');
+            // Updated to binance.com for accurate global pricing
+            const ws = new WebSocket('wss://stream.binance.com:9443/ws/bnbusdt@ticker');
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 const livePrice = parseFloat(data.c);
@@ -220,10 +222,49 @@
             ws.onclose = () => setTimeout(connectWebSocket, 5000); 
         }
 
+        // Multi-proxy fetcher for Binance Klines
+        async function fetchKlines() {
+            const endpoints = [
+                "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15",
+                "https://api1.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15",
+                "https://api2.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15",
+                "https://corsproxy.io/?" + encodeURIComponent("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15")
+            ];
+
+            for (let url of endpoints) {
+                try {
+                    const res = await fetch(url);
+                    if (res.ok) return await res.json();
+                } catch (e) {
+                    console.warn(`Proxy ${url} failed, trying next...`);
+                }
+            }
+            throw new Error("All Binance API endpoints failed.");
+        }
+
         function getPredictionData(epoch) {
             const raw = localStorage.getItem(`pred_${epoch}`);
             if (!raw) return null;
             try { return JSON.parse(raw); } catch (e) { return { pred: raw, conf: "N/A" }; }
+        }
+
+        async function loadLedgerHistory() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('prediction_logs')
+                    .select('*')
+                    .order('epoch_id', { ascending: false })
+                    .limit(20);
+
+                if (data && data.length > 0) {
+                    // Iterate backwards so prepending keeps the newest items on top
+                    data.slice().reverse().forEach(log => {
+                        renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence || "DB");
+                    });
+                }
+            } catch (e) {
+                console.error("Could not load ledger history", e);
+            }
         }
 
         async function init() {
@@ -234,6 +275,7 @@
             } catch (error) { return; }
             
             connectWebSocket();
+            await loadLedgerHistory(); // Load previous trades on start
             await checkRound();
             setInterval(checkRound, 5000);
         }
@@ -265,7 +307,8 @@
 
                 if (liveData) {
                     if (liveData.pred === "SKIP") {
-                        liveBetEl.innerText = `SKIP (Try: ${liveData.try})`;
+                        const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
+                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try}</span>)</span>`;
                         liveBetEl.className = "prediction-badge pred-waiting";
                     } else {
                         liveBetEl.innerText = liveData.pred;
@@ -326,7 +369,8 @@
 
                     if (expiredData) {
                         if (expiredData.pred === 'SKIP') {
-                            prevBetEl.innerText = "SKIPPED";
+                            const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
+                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try}</span>)</span>`;
                             prevBetEl.className = "prediction-badge pred-waiting";
                         } else {
                             prevBetEl.innerText = expiredData.pred;
@@ -368,12 +412,12 @@
                 const oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, ABI_CHAINLINK, provider);
                 const [, price] = await oracleContract.latestRoundData();
                 const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8));
-                const currentBetPrice = oraclePrice.toFixed(4); // Captured price for UI
+                const currentBetPrice = oraclePrice.toFixed(4); 
 
-                const res = await fetch("https://api.binance.us/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15");
-                const candles = await res.json();
+                // Updated to utilize the proxy fallback system
+                const candles = await fetchKlines();
                 
-                let closes = candles.map(c => parseFloat(c[4]));
+                let closes = candles.map(c => parseFloat(c));
                 let gains = 0, losses = 0;
                 
                 for(let i = 1; i < closes.length; i++) {
@@ -389,7 +433,7 @@
                 let prediction = (rsi > 65) ? "DOWN" : ((rsi < 35) ? "UP" : "NONE");
                 
                 if (prediction === "NONE") { 
-                    const recentMomentum = closes[14] - closes[12]; 
+                    const recentMomentum = closes - closes; 
                     prediction = recentMomentum > 0 ? "UP" : "DOWN";
                 }
 
@@ -415,7 +459,8 @@
             const betPriceEl = document.getElementById('bot-bet-price');
 
             if (prediction === "SKIP") {
-                predEl.innerText = `SKIP (Try: ${tryPred})`;
+                const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
+                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred}</span>)</span>`;
                 predEl.className = "prediction-badge pred-waiting";
             } else {
                 predEl.innerText = prediction;
@@ -462,9 +507,17 @@
                 const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
                 const botData = getPredictionData(epochToCheck);
                 
-                if (botData && botData.pred !== 'SKIP') {
-                    const isWin = (botData.pred === actualResult) ? "WIN" : "LOSS";
-                    await supabaseClient.from('prediction_logs').insert([{ epoch_id: epochToCheck, predicted_side: botData.pred, result: isWin }]);
+                if (botData) {
+                    // Update database even for skips so it stays accurate on the books
+                    const isWin = (botData.pred === "SKIP") ? "SKIPPED" : ((botData.pred === actualResult) ? "WIN" : "LOSS");
+                    
+                    await supabaseClient.from('prediction_logs').insert([{ 
+                        epoch_id: epochToCheck, 
+                        predicted_side: botData.pred, 
+                        result: isWin,
+                        confidence: botData.conf // Ensure DB logs confidence if you add that column
+                    }]);
+                    
                     renderLedger(epochToCheck, botData.pred, actualResult, isWin, botData.conf);
                 }
             } catch(e) {}
@@ -472,13 +525,17 @@
 
         function renderLedger(epoch, predicted, actual, result, confidence) {
             const ledger = document.getElementById('ledger');
-            const color = result === "WIN" ? "var(--up)" : "var(--down)";
+            
+            // Adjust colors based on win/loss/skip
+            let resultColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "#a1a1a1");
+            let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "#a1a1a1");
+            
             if (ledger.innerHTML.includes(`Epoch #${epoch}`)) return;
 
             ledger.innerHTML = `
             <div class="ledger-item">
                 <div><strong>Epoch #${epoch}</strong> <span class="confidence-tag" style="margin-left: 10px;">${confidence} Conf.</span></div>
-                <div>Bot: <span style="color: ${predicted==='UP'?'var(--up)':'var(--down)'}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; Result: <span style="color: ${color}; font-weight: 800;">${result}</span></div>
+                <div>Bot: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; Result: <span style="color: ${resultColor}; font-weight: 800;">${result}</span></div>
             </div>` + ledger.innerHTML;
         }
 
