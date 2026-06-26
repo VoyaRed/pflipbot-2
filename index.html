@@ -8,46 +8,106 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
-        :root { --bg: #0b0e14; --panel: #151a25; --up: #00c853; --down: #ff3d00; --text: #f0f6fc; }
-        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .card { background: var(--panel); padding: 15px; border-radius: 12px; border: 1px solid #2d3748; }
-        .chart-box { height: 400px; width: 100%; margin-bottom: 20px; }
-        .stat-val { font-size: 1.5rem; font-weight: bold; color: #00e7df; }
-        .win-rate { font-size: 2rem; color: var(--up); }
+        :root { 
+            --bg: #1e1d2b; /* PancakeSwap Dark Purple */
+            --panel: #27262c; 
+            --up: #31d0aa; 
+            --down: #ed4b9e; 
+            --text: #f4eeff; 
+            --subtext: #8f90b0;
+        }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; }
+        .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 16px; overflow: hidden; }
         
-        /* New Progress Bar Styles */
-        .progress-bg { background: #2d3748; border-radius: 4px; height: 8px; width: 100%; overflow: hidden; margin-top: 15px; }
-        .progress-fill { background: #00e7df; height: 100%; width: 0%; transition: width 1s linear; }
-        .time-text { font-size: 0.85rem; color: #a0aec0; margin-top: 5px; text-align: right; }
+        /* 3-Card PancakeSwap Layout */
+        .rounds-container { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
+        
+        .card { 
+            background: var(--panel); 
+            border-radius: 16px; 
+            width: 300px; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden;
+            box-shadow: 0px 2px 12px -8px rgba(25, 19, 38, 0.1), 0px 1px 1px rgba(25, 19, 38, 0.05);
+        }
+        
+        .card-header { padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .card-body { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        
+        /* Card Specifics */
+        .expired { opacity: 0.7; }
+        .expired .card-header { background: #353547; color: var(--subtext); }
+        
+        .live { border: 2px solid var(--text); }
+        .live .card-header { background: #7645d9; color: white; }
+        
+        .next .card-header { background: #7645d9; color: white; }
+        
+        .prediction-badge { padding: 10px 40px; border-radius: 8px; font-size: 1.5rem; font-weight: bold; width: 100%; text-align: center; box-sizing: border-box; }
+        .pred-up { background: var(--up); color: white; }
+        .pred-down { background: var(--down); color: white; }
+        .pred-waiting { background: #353547; color: var(--subtext); }
+
+        .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.9rem; margin-bottom: 5px; }
+        
+        /* Progress Bar */
+        .progress-bg { background: #3b3a43; border-radius: 4px; height: 12px; width: 100%; overflow: hidden; }
+        .progress-fill { background: #7645d9; height: 100%; width: 0%; transition: width 1s linear; }
+        
+        .ledger-box { background: var(--panel); padding: 20px; border-radius: 16px; }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="tv-container" class="chart-box"></div>
         
-        <div class="grid">
-            <div class="card">
-                <h3>Last Closed Round</h3>
-                <div id="prev-val" class="stat-val">---</div>
-            </div>
+        <div class="rounds-container">
             
-            <div class="card">
-                <h3>Live Round</h3>
-                <div id="live-epoch" class="stat-val">Finding best RPC...</div>
-                <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
-                <div id="time-left" class="time-text">Calculating time...</div>
+            <div class="card expired">
+                <div class="card-header">
+                    <span>Expired</span>
+                    <span id="prev-epoch">#---</span>
+                </div>
+                <div class="card-body">
+                    <div style="font-size: 1.2rem; font-weight: bold; color: var(--subtext);">Result</div>
+                    <div id="prev-result" class="prediction-badge pred-waiting">---</div>
+                </div>
             </div>
-            
-            <div class="card">
-                <h3>Auto-Win Rate</h3>
-                <div class="win-rate" id="win-rate">0.00%</div>
+
+            <div class="card live">
+                <div class="card-header">
+                    <span>▶ LIVE</span>
+                    <span id="live-epoch">#---</span>
+                </div>
+                <div class="card-body" style="width: 100%; box-sizing: border-box;">
+                    <div style="text-align: center; margin-bottom: 10px;">Locking In:</div>
+                    <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
+                    <div id="time-left" style="text-align: center; font-weight: bold; margin-top: 5px; font-size: 1.2rem;">--:--</div>
+                </div>
             </div>
+
+            <div class="card next">
+                <div class="card-header">
+                    <span>▶ Next</span>
+                    <span id="next-epoch">#---</span>
+                </div>
+                <div class="card-body">
+                    <div style="font-size: 1rem; font-weight: bold;">Bot Target</div>
+                    <div id="bot-prediction" class="prediction-badge pred-waiting">Calculating...</div>
+                    <div class="stat-row" style="margin-top: 10px;">
+                        <span style="color: var(--subtext);">Current RSI:</span>
+                        <span id="live-rsi" style="font-weight: bold;">--</span>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
-        <div class="card">
-            <h3>Trade Execution Ledger</h3>
-            <div id="ledger" style="height: 150px; overflow-y: scroll; font-size: 0.8rem;"></div>
+        <div class="ledger-box">
+            <h3>Bot Execution Ledger</h3>
+            <div id="ledger" style="height: 150px; overflow-y: scroll; font-size: 0.85rem;"></div>
         </div>
     </div>
 
@@ -63,39 +123,31 @@
             "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
         ];
         
-        // Array of reliable BSC RPC nodes
-        const RPC_URLS = [
-            "https://bsc-rpc.publicnode.com",
-            "https://bsc-dataseed1.binance.org",
-            "https://binance.llamarpc.com"
-        ];
+        const RPC_URLS = ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed1.binance.org"];
 
-        let provider;
-        let contract;
-        let lastEpoch = 0;
-        let timerInterval;
+        let provider, contract, lastEpoch = 0, timerInterval;
 
         async function init() {
-            new TradingView.widget({"container_id":"tv-container","symbol":"BINANCE:BNBUSD","theme":"dark","autosize":true});
+            // Updated TradingView widget with 5m interval and RSI study
+            new TradingView.widget({
+                "container_id": "tv-container",
+                "symbol": "BINANCE:BNBUSD",
+                "interval": "5",
+                "theme": "dark",
+                "autosize": true,
+                "studies": ["RSI@tv-basicstudies"]
+            });
             
-            // 1. Race the RPCs to find the fastest connection
             try {
                 const fastest = await findFastestRPC();
                 provider = fastest.provider;
                 contract = fastest.contract;
-                console.log("Connected to fastest RPC:", provider.connection.url);
-            } catch (error) {
-                document.getElementById('live-epoch').innerText = "RPC Failure. Retrying...";
-                setTimeout(init, 5000);
-                return;
-            }
+            } catch (error) { return; }
 
-            // 2. Fetch initial data and start loop
-            await initialLoad();
+            await checkRound();
             setInterval(checkRound, 5000);
         }
 
-        // Races all RPC nodes and returns the first one that successfully fetches currentEpoch
         async function findFastestRPC() {
             const promises = RPC_URLS.map(async (url) => {
                 const p = new ethers.providers.JsonRpcProvider(url);
@@ -106,61 +158,104 @@
             return Promise.any(promises); 
         }
 
-        async function initialLoad() {
-            try {
-                const epoch = (await contract.currentEpoch()).toNumber();
-                
-                // Immediately check and populate the last fully resolved round (current - 2)
-                if (epoch > 2) {
-                    await verifyResult(epoch - 2);
-                }
-                
-                // Jump straight into the standard tracking loop
-                checkRound();
-            } catch (e) {
-                console.error("Error on initial load:", e);
-            }
-        }
-
         async function checkRound() {
             try {
                 const epoch = (await contract.currentEpoch()).toNumber();
                 const liveRoundData = await contract.rounds(epoch);
                 
-                document.getElementById('live-epoch').innerText = `Epoch ${epoch}`;
+                // Update Headers
+                document.getElementById('live-epoch').innerText = `#${epoch}`;
+                document.getElementById('next-epoch').innerText = `#${epoch + 1}`;
+                document.getElementById('prev-epoch').innerText = `#${epoch - 1}`;
 
-                // Handle Timer Progress Bar based on the Live Round's lockTimestamp
+                // Handle Timer Progress Bar
                 startTimer(liveRoundData.lockTimestamp.toNumber());
 
-                // Handle Last Closed Round Status (Current - 1 is locked, Current - 2 is closed)
+                // Predict the NEXT round if we haven't yet
+                if (!localStorage.getItem(`pred_${epoch + 1}`)) {
+                    await generatePrediction(epoch + 1);
+                } else {
+                    displayPrediction(localStorage.getItem(`pred_${epoch + 1}`));
+                }
+
+                // Handle Expired Round Data
                 if (epoch > 1) {
                     const prevEpoch = epoch - 1;
                     const prevRound = await contract.rounds(prevEpoch);
-                    const lockPrice = ethers.utils.formatUnits(prevRound.lockPrice, 8);
-                    const closePrice = ethers.utils.formatUnits(prevRound.closePrice, 8);
-                    
                     if (prevRound.oracleCalled) {
-                        const actualResult = parseFloat(closePrice) > parseFloat(lockPrice) ? "UP" : "DOWN";
-                        const prevValEl = document.getElementById('prev-val');
-                        prevValEl.innerText = `Epoch ${prevEpoch}: ${actualResult}`;
-                        prevValEl.style.color = actualResult === "UP" ? "var(--up)" : "var(--down)";
+                        const lockPrice = parseFloat(ethers.utils.formatUnits(prevRound.lockPrice, 8));
+                        const closePrice = parseFloat(ethers.utils.formatUnits(prevRound.closePrice, 8));
+                        const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
+                        
+                        const prevEl = document.getElementById('prev-result');
+                        prevEl.innerText = actualResult;
+                        prevEl.className = `prediction-badge ${actualResult === 'UP' ? 'pred-up' : 'pred-down'}`;
                     } else {
-                        document.getElementById('prev-val').innerText = `Epoch ${prevEpoch}: Resolving...`;
-                        document.getElementById('prev-val').style.color = "#00e7df";
+                        document.getElementById('prev-result').innerText = "Resolving...";
+                        document.getElementById('prev-result').className = "prediction-badge pred-waiting";
                     }
                 }
 
-                // If a new epoch just started, log the previous one to Supabase/Ledger
                 if (epoch > lastEpoch && lastEpoch !== 0) {
-                    // We check lastEpoch - 1 because lastEpoch is just locking now, 
-                    // and the one before it is the one that actually closed.
                     verifyResult(lastEpoch - 1); 
                 }
                 lastEpoch = epoch;
                 
-            } catch(e) { 
-                console.error("RPC or Contract Error:", e); 
+            } catch(e) { console.error(e); }
+        }
+
+        // --- ALGORITHMIC TRADING BRAIN ---
+        async function generatePrediction(targetEpoch) {
+            try {
+                document.getElementById('bot-prediction').innerText = "Analyzing...";
+                
+                // Fetch live 5m candle data from Binance
+                const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15");
+                const candles = await res.json();
+                
+                // Calculate simple RSI based on close prices
+                let closes = candles.map(c => parseFloat(c[4]));
+                let gains = 0, losses = 0;
+                
+                for(let i = 1; i < closes.length; i++) {
+                    const diff = closes[i] - closes[i-1];
+                    if (diff > 0) gains += diff;
+                    else losses += Math.abs(diff);
+                }
+                
+                const avgGain = gains / 14;
+                const avgLoss = losses / 14;
+                const rs = avgGain / avgLoss;
+                const rsi = 100 - (100 / (1 + rs));
+                
+                document.getElementById('live-rsi').innerText = rsi.toFixed(2);
+
+                // The Brain's Logic rules
+                let prediction = "UP"; // Default baseline
+                
+                if (rsi > 65) {
+                    prediction = "DOWN"; // Overbought, expect drop
+                } else if (rsi < 35) {
+                    prediction = "UP"; // Oversold, expect bounce
+                } else {
+                    // Trend following for the middle zone
+                    const recentMomentum = closes[14] - closes[12]; // Look at last 3 candles
+                    prediction = recentMomentum > 0 ? "UP" : "DOWN";
+                }
+
+                // Save and Display
+                localStorage.setItem(`pred_${targetEpoch}`, prediction);
+                displayPrediction(prediction);
+
+            } catch (e) {
+                console.error("Brain Failed:", e);
             }
+        }
+
+        function displayPrediction(prediction) {
+            const predEl = document.getElementById('bot-prediction');
+            predEl.innerText = `ENTER ${prediction}`;
+            predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
         }
 
         function startTimer(lockTimestamp) {
@@ -171,22 +266,17 @@
             timerInterval = setInterval(() => {
                 const now = Math.floor(Date.now() / 1000);
                 const secondsLeft = lockTimestamp - now;
-                const totalRoundSeconds = 300; // PancakeSwap rounds are exactly 5 mins
+                const total = 300; 
 
                 if (secondsLeft <= 0) {
-                    text.innerText = "Locking / Calculating...";
+                    text.innerText = "00:00";
                     bar.style.width = "100%";
                     clearInterval(timerInterval);
                 } else {
                     const mins = Math.floor(secondsLeft / 60);
                     const secs = secondsLeft % 60;
-                    text.innerText = `${mins}:${secs.toString().padStart(2, '0')} remaining`;
-
-                    // Calculate percentage for progress bar
-                    let percent = ((totalRoundSeconds - secondsLeft) / totalRoundSeconds) * 100;
-                    // Clamp between 0 and 100 just in case
-                    percent = Math.max(0, Math.min(100, percent));
-                    bar.style.width = `${percent}%`;
+                    text.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                    bar.style.width = `${Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100))}%`;
                 }
             }, 1000);
         }
@@ -194,48 +284,32 @@
         async function verifyResult(epochToCheck) {
             try {
                 if (epochToCheck <= 0) return;
-                
                 const round = await contract.rounds(epochToCheck);
-                if (!round.oracleCalled) return; // Oracle hasn't resolved it yet
+                if (!round.oracleCalled) return; 
 
                 const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
                 const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
                 const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
-
-                // Retrieve the bot's prediction for this epoch from LocalStorage
                 const botPrediction = localStorage.getItem(`pred_${epochToCheck}`);
                 
                 if (botPrediction) {
                     const isWin = (botPrediction === actualResult) ? "WIN" : "LOSS";
-                    
-                    // Log to Supabase
-                    const { error } = await supabaseClient.from('prediction_logs').insert([{ 
-                        epoch_id: epochToCheck,
-                        predicted_side: botPrediction,
-                        result: isWin 
+                    await supabaseClient.from('prediction_logs').insert([{ 
+                        epoch_id: epochToCheck, predicted_side: botPrediction, result: isWin 
                     }]);
-
-                    if (error) console.error("Supabase Error:", error);
-                    else renderLedger(epochToCheck, botPrediction, actualResult, isWin);
-                } else {
-                    // Render historical data even if bot didn't trade it
-                    renderLedger(epochToCheck, "None", actualResult, "N/A");
+                    renderLedger(epochToCheck, botPrediction, actualResult, isWin);
                 }
-            } catch(e) {
-                console.error("Error verifying result:", e);
-            }
+            } catch(e) {}
         }
 
         function renderLedger(epoch, predicted, actual, result) {
             const ledger = document.getElementById('ledger');
-            const color = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "#888");
-            
-            // Check if it's already in the ledger so we don't duplicate on page reloads
+            const color = result === "WIN" ? "var(--up)" : "var(--down)";
             if (ledger.innerHTML.includes(`Epoch ${epoch}`)) return;
 
-            ledger.innerHTML = `<div style="margin-bottom: 5px; border-bottom: 1px solid #2d3748; padding-bottom: 5px;">
-                <strong>Epoch ${epoch}</strong> — Pred: ${predicted} | Actual: ${actual} | 
-                <span style="color: ${color}; font-weight: bold;">${result}</span>
+            ledger.innerHTML = `<div style="margin-bottom: 5px; border-bottom: 1px solid #353547; padding-bottom: 5px;">
+                <strong>Epoch ${epoch}</strong> — Pred: <span style="color: ${predicted==='UP'?'var(--up)':'var(--down)'}">${predicted}</span> 
+                | Actual: ${actual} | <span style="color: ${color}; font-weight: bold;">${result}</span>
             </div>` + ledger.innerHTML;
         }
 
