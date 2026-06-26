@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PancakeSwap Pro: Auto-Win Tracker</title>
+    <title>cake</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -68,7 +68,6 @@
         .progress-bg { background: #3b3a43; border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); margin-bottom: 10px; }
         .progress-fill { background: linear-gradient(90deg, #5324ab, #7645d9); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
         
-        /* New Price Box Styling matching PancakeSwap */
         .price-box {
             background: #1e1d24;
             border-radius: 16px;
@@ -93,6 +92,7 @@
         @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
         .ledger-item { animation: slideIn 0.4s ease-out forwards; margin-bottom: 8px; background: #353547; padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
         .confidence-tag { font-size: 0.85rem; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 6px; color: #d1d1d1; }
+        .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 6px; min-height: 1.2em; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -107,7 +107,10 @@
                 </div>
                 <div class="card-body">
                     <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="prev-conf" class="confidence-tag">--%</span></div>
-                    <div id="prev-bet" class="prediction-badge pred-waiting">---</div>
+                    <div style="width: 100%;">
+                        <div id="prev-bet" class="prediction-badge pred-waiting">---</div>
+                        <div id="prev-bet-price" class="bet-price-label"></div>
+                    </div>
                     <div class="stat-row" style="margin-top: 5px;"><span style="font-weight: bold;">Result</span></div>
                     <div id="prev-result" class="prediction-badge pred-waiting" style="padding: 6px; font-size: 1.1rem;">---</div>
 
@@ -130,7 +133,10 @@
                 </div>
                 <div class="card-body" style="width: 100%; box-sizing: border-box;">
                     <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="live-conf" class="confidence-tag">--%</span></div>
-                    <div id="live-bet" class="prediction-badge pred-waiting">---</div>
+                    <div style="width: 100%;">
+                        <div id="live-bet" class="prediction-badge pred-waiting">---</div>
+                        <div id="live-bet-price" class="bet-price-label"></div>
+                    </div>
 
                     <div class="price-box">
                         <div class="price-label">Last Price</div>
@@ -155,7 +161,10 @@
                 </div>
                 <div class="card-body">
                     <div class="stat-row"><span style="font-weight: bold;">Bot Target</span><span id="next-conf" class="confidence-tag" style="color: var(--primary);">Calculating...</span></div>
-                    <div id="bot-prediction" class="prediction-badge pred-waiting">Waiting...</div>
+                    <div style="width: 100%;">
+                        <div id="bot-prediction" class="prediction-badge pred-waiting">Waiting...</div>
+                        <div id="bot-bet-price" class="bet-price-label"></div>
+                    </div>
                     
                     <div class="stat-row" style="margin-top: 15px;">
                         <span style="color: var(--subtext);">Market RSI:</span>
@@ -189,29 +198,26 @@
             "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
         ];
         
-        // --- Added Configuration Data ---
         const CHAINLINK_BNB_USD = "0x0567F232b35FBf0A7e21a2d87e0767571d0234a4";
         const ABI_CHAINLINK = ["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"];
         
         const RPC_URLS = ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed1.binance.org"];
         let provider, contract, lastEpoch = 0, timerInterval;
-        let lastLockedPrice = 0; // State added for WebSocket coloring
+        let lastLockedPrice = 0;
 
-        // --- WebSocket Implementation ---
         function connectWebSocket() {
             const ws = new WebSocket('wss://stream.binance.us:9443/ws/bnbusdt@ticker');
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 const livePrice = parseFloat(data.c);
                 
-                // Update DOM and Color based on lastLockedPrice
                 const el = document.getElementById('live-last-price');
                 if (el && lastLockedPrice > 0) {
                     el.innerText = `$${livePrice.toFixed(4)}`;
                     el.className = livePrice >= lastLockedPrice ? 'main-price up' : 'main-price down';
                 }
             };
-            ws.onclose = () => setTimeout(connectWebSocket, 5000); // Reconnect if closed
+            ws.onclose = () => setTimeout(connectWebSocket, 5000); 
         }
 
         function getPredictionData(epoch) {
@@ -227,7 +233,7 @@
                 provider = fastest.provider; contract = fastest.contract;
             } catch (error) { return; }
             
-            connectWebSocket(); // Initialize websocket
+            connectWebSocket();
             await checkRound();
             setInterval(checkRound, 5000);
         }
@@ -252,9 +258,11 @@
                 if (liveEpoch > 0) document.getElementById('live-epoch').innerText = `#${liveEpoch}`;
                 if (expiredEpoch > 0) document.getElementById('prev-epoch').innerText = `#${expiredEpoch}`;
 
-                // --- LIVE CARD & TIMER UPDATE ---
+                // --- LIVE CARD UPDATE ---
                 const liveData = getPredictionData(liveEpoch);
                 const liveBetEl = document.getElementById('live-bet');
+                const liveBetPriceEl = document.getElementById('live-bet-price');
+
                 if (liveData) {
                     if (liveData.pred === "SKIP") {
                         liveBetEl.innerText = `SKIP (Try: ${liveData.try})`;
@@ -264,9 +272,11 @@
                         liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                     }
                     document.getElementById('live-conf').innerText = liveData.conf;
+                    liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
                 } else {
                     liveBetEl.innerText = "No Bet"; liveBetEl.className = "prediction-badge pred-waiting";
                     document.getElementById('live-conf').innerText = "--%";
+                    liveBetPriceEl.innerText = "";
                 }
 
                 if (liveEpoch > 0) {
@@ -274,12 +284,11 @@
                     const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
                     const totalPool = parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4);
                     
-                    lastLockedPrice = parseFloat(lockPrice); // Update global for WS coloring
+                    lastLockedPrice = parseFloat(lockPrice); 
                     
                     document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
                     document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
 
-                    // Move timer to closeTimestamp of the LIVE round
                     const closeTimestamp = liveRound.closeTimestamp.toNumber();
                     startTimer(closeTimestamp);
                 }
@@ -301,9 +310,10 @@
                         document.getElementById('bot-prediction').innerText = "Analyzing...";
                         document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
                         document.getElementById('next-conf').innerText = "Waiting for 75s";
+                        document.getElementById('bot-bet-price').innerText = "";
                     }
                 } else {
-                    displayPrediction(nextData.pred, nextData.conf, nextData.try);
+                    displayPrediction(nextData.pred, nextData.conf, nextData.try, nextData.betPrice);
                 }
 
                 // --- EXPIRED CARD UPDATE ---
@@ -312,6 +322,8 @@
                     const expiredData = getPredictionData(expiredEpoch);
                     
                     const prevBetEl = document.getElementById('prev-bet');
+                    const prevBetPriceEl = document.getElementById('prev-bet-price');
+
                     if (expiredData) {
                         if (expiredData.pred === 'SKIP') {
                             prevBetEl.innerText = "SKIPPED";
@@ -321,6 +333,7 @@
                             prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                         }
                         document.getElementById('prev-conf').innerText = expiredData.conf;
+                        prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
                     }
 
                     const prevResultEl = document.getElementById('prev-result');
@@ -332,7 +345,6 @@
                         prevResultEl.innerText = actualResult;
                         prevResultEl.className = `prediction-badge ${actualResult === 'UP' ? 'pred-up' : 'pred-down'}`;
                         
-                        // Set Prices
                         document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
                         const closeEl = document.getElementById('prev-close-price');
                         closeEl.innerText = `$${closePrice.toFixed(4)}`;
@@ -351,15 +363,13 @@
             } catch(e) { console.error("CheckRound Error:", e); }
         }
 
-        // --- Modified Brain Function ---
         async function generatePrediction(targetEpoch) {
             try {
-                // 1. Get Chainlink Price (Tamper-proof accuracy)
                 const oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, ABI_CHAINLINK, provider);
                 const [, price] = await oracleContract.latestRoundData();
                 const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8));
+                const currentBetPrice = oraclePrice.toFixed(4); // Captured price for UI
 
-                // 2. Logic Analysis (Calculate RSI)
                 const res = await fetch("https://api.binance.us/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15");
                 const candles = await res.json();
                 
@@ -375,10 +385,10 @@
                 const rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
                 document.getElementById('live-rsi').innerText = rsi.toFixed(2);
 
-                let shouldSkip = (rsi > 40 && rsi < 60); // The "No-Man's Land"
+                let shouldSkip = (rsi > 40 && rsi < 60); 
                 let prediction = (rsi > 65) ? "DOWN" : ((rsi < 35) ? "UP" : "NONE");
                 
-                if (prediction === "NONE") { // Fallback for RSI in skip range
+                if (prediction === "NONE") { 
                     const recentMomentum = closes[14] - closes[12]; 
                     prediction = recentMomentum > 0 ? "UP" : "DOWN";
                 }
@@ -387,23 +397,23 @@
                 let rawConfidence = 50 + (rsiDistance * 1.6) + (Math.random() * 3);
                 let finalConfidence = Math.min(98.5, Math.max(51.2, rawConfidence)).toFixed(1) + "%";
 
-                // 3. Handle Skip / Optional logic
                 if (shouldSkip) {
-                    const skipObject = { pred: "SKIP", conf: "Volatility Low", try: prediction };
+                    const skipObject = { pred: "SKIP", conf: "Volatility Low", try: prediction, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
-                    displayPrediction("SKIP", "Volatility Low", prediction);
+                    displayPrediction("SKIP", "Volatility Low", prediction, currentBetPrice);
                 } else {
-                    const predictionObject = { pred: prediction, conf: finalConfidence };
+                    const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
-                    displayPrediction(prediction, finalConfidence);
+                    displayPrediction(prediction, finalConfidence, null, currentBetPrice);
                 }
                 
             } catch (e) { console.error("Brain Failed:", e); }
         }
 
-        // --- Modified Display to handle SKIP ---
-        function displayPrediction(prediction, confidence, tryPred = null) {
+        function displayPrediction(prediction, confidence, tryPred = null, betPrice = null) {
             const predEl = document.getElementById('bot-prediction');
+            const betPriceEl = document.getElementById('bot-bet-price');
+
             if (prediction === "SKIP") {
                 predEl.innerText = `SKIP (Try: ${tryPred})`;
                 predEl.className = "prediction-badge pred-waiting";
@@ -411,7 +421,14 @@
                 predEl.innerText = prediction;
                 predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
             }
+            
             document.getElementById('next-conf').innerText = confidence;
+            
+            if (betPrice) {
+                betPriceEl.innerText = `Bot bet at: $${betPrice}`;
+            } else {
+                betPriceEl.innerText = "";
+            }
         }
 
         function startTimer(targetTimestamp) {
@@ -422,7 +439,7 @@
             timerInterval = setInterval(() => {
                 const now = Math.floor(Date.now() / 1000);
                 const secondsLeft = targetTimestamp - now;
-                const total = 300; // 5 minute rounds
+                const total = 300; 
 
                 if (secondsLeft <= 0) {
                     text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval);
@@ -445,7 +462,6 @@
                 const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
                 const botData = getPredictionData(epochToCheck);
                 
-                // Do not log skipped bets as Win/Loss in supabase/ledger
                 if (botData && botData.pred !== 'SKIP') {
                     const isWin = (botData.pred === actualResult) ? "WIN" : "LOSS";
                     await supabaseClient.from('prediction_logs').insert([{ epoch_id: epochToCheck, predicted_side: botData.pred, result: isWin }]);
