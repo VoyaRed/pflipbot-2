@@ -186,7 +186,8 @@
         const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
+        const PREDICT_ADDR = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        
         const ABI = [
             "function currentEpoch() view returns (uint256)", 
             "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
@@ -251,17 +252,6 @@
                     document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
                     document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
                     
-                    // Fetch real-time price from Binance API for "Last Price"
-                    fetch("https://api.binance.us/api/v3/ticker/price?symbol=BNBUSDT")
-                        .then(res => res.json())
-                        .then(data => {
-                            const currentPrice = parseFloat(data.price).toFixed(4);
-                            const priceEl = document.getElementById('live-last-price');
-                            priceEl.innerText = `$${currentPrice}`;
-                            if(currentPrice > lockPrice) { priceEl.className = "main-price up"; }
-                            else if(currentPrice < lockPrice) { priceEl.className = "main-price down"; }
-                        }).catch(() => {});
-
                     // Move timer to closeTimestamp of the LIVE round
                     const closeTimestamp = liveRound.closeTimestamp.toNumber();
                     startTimer(closeTimestamp);
