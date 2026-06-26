@@ -186,7 +186,7 @@
         const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const PREDICT_ADDR = "0xb8c77482e45f1f44de1745f52c74426c631bdd52";
+        const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
         const ABI = [
             "function currentEpoch() view returns (uint256)", 
             "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
@@ -200,31 +200,6 @@
             if (!raw) return null;
             try { return JSON.parse(raw); } catch (e) { return { pred: raw, conf: "N/A" }; }
         }
-
-        // Paste this right above your function init() { ... }
-const bnbSocket = new WebSocket('wss://stream.binance.us:9443/ws/bnbusdt@ticker');
-
-bnbSocket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    const currentPrice = parseFloat(data.c); 
-    const priceEl = document.getElementById('live-last-price');
-    
-    if (priceEl) {
-        priceEl.innerText = `$${currentPrice.toFixed(4)}`;
-        const lockPriceText = document.getElementById('live-lock-price').innerText.replace('$', '');
-        const lockPrice = parseFloat(lockPriceText);
-
-        if (!isNaN(lockPrice)) {
-            if (currentPrice > lockPrice) { priceEl.className = "main-price up"; }
-            else if (currentPrice < lockPrice) { priceEl.className = "main-price down"; }
-            else { priceEl.className = "main-price waiting"; }
-        }
-    }
-};
-
-// Your existing init function starts here
-async function init() {
-    // ...
 
         async function init() {
             new TradingView.widget({ "container_id": "tv-container", "symbol": "BINANCE:BNBUSD", "interval": "5", "theme": "dark", "autosize": true, "studies": ["RSI@tv-basicstudies"] });
