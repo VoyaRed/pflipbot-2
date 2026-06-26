@@ -414,37 +414,106 @@
                 const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8));
                 const currentBetPrice = oraclePrice.toFixed(4); 
 
-                // Updated to utilize the proxy fallback system
-                const candles = await fetchKlines();
+                // Fetch 40 candles to ensure we have enough data for a 20-period moving average and EMAs
+                const endpoints = [
+                    "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40",
+                    "https://api1.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40",
+                    "https://corsproxy.io/?" + encodeURIComponent("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40")
+                ];
+
+                let candles;
+                for (let url of endpoints) {
+                    try {
+                        const res = await fetch(url);
+                        if (res.ok) { candles = await res.json(); break; }
+                    } catch (e) {}
+                }
+                if (!candles) throw new Error("API failed");
                 
-                let closes = candles.map(c => parseFloat(c));
+                const closes = candles.map(c => parseFloat(c));
+                const currentClose = closes[closes.length - 1];
+
+                // --- 1. CALCULATE RSI (14) ---
                 let gains = 0, losses = 0;
-                
-                for(let i = 1; i < closes.length; i++) {
+                for(let i = closes.length - 14; i < closes.length; i++) {
                     const diff = closes[i] - closes[i-1];
                     if (diff > 0) gains += diff; else losses += Math.abs(diff);
                 }
-                
                 const avgGain = gains / 14; const avgLoss = losses / 14;
                 const rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
                 document.getElementById('live-rsi').innerText = rsi.toFixed(2);
 
-                let shouldSkip = (rsi > 40 && rsi < 60); 
-                let prediction = (rsi > 65) ? "DOWN" : ((rsi < 35) ? "UP" : "NONE");
+                // --- 2. CALCULATE BOLLINGER BANDS (20, 2) ---
+                const bbPeriod = 20;
+                const bbSlice = closes.slice(-bbPeriod);
+                const sma = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
                 
-                if (prediction === "NONE") { 
-                    const recentMomentum = closes - closes; 
-                    prediction = recentMomentum > 0 ? "UP" : "DOWN";
+                const variance = bbSlice.reduce((acc, val) => acc + Math.pow(val - sma, 2), 0) / bbPeriod;
+                const stdDev = Math.sqrt(variance);
+                const upperBB = sma + (stdDev * 2);
+                const lowerBB = sma - (stdDev * 2);
+
+                // --- 3. CALCULATE EMA (9 & 21) ---
+                const calcEMA = (data, period) => {
+                    const k = 2 / (period + 1);
+                    let ema = data;
+                    for (let i = 1; i < data.length; i++) {
+                        ema = (data[i] * k) + (ema * (1 - k));
+                    }
+                    return ema;
+                };
+                const ema9 = calcEMA(closes.slice(-20), 9);
+                const ema21 = calcEMA(closes.slice(-30), 21);
+
+                // --- 4. THE BRAIN LOGIC ---
+                let upScore = 0;
+                let downScore = 0;
+                let isChoppy = (upperBB - lowerBB) / sma < 0.002; // If bands are super tight, market is chopped
+
+                if (isChoppy) {
+                    // MEAN REVERSION (Chop Market Strategy)
+                    // If it pumps to the top band in a chop, bet DOWN. If it dumps to bottom, bet UP.
+                    if (currentClose >= upperBB || rsi > 60) downScore += 3;
+                    if (currentClose <= lowerBB || rsi < 40) upScore += 3;
+                    
+                    // If it's dead in the middle of a chop, skip it to avoid burning money
+                    if (currentClose > sma - (stdDev*0.5) && currentClose < sma + (stdDev*0.5)) {
+                        upScore = 0; downScore = 0; 
+                    }
+                } else {
+                    // TRENDING MARKET STRATEGY
+                    if (ema9 > ema21) upScore += 2; // Golden cross
+                    if (ema9 < ema21) downScore += 2; // Death cross
+                    
+                    if (rsi > 65) downScore += 1; // Overbought
+                    if (rsi < 35) upScore += 1; // Oversold
+
+                    if (currentClose > upperBB) downScore += 2; // Rubber band effect
+                    if (currentClose < lowerBB) upScore += 2;
                 }
 
-                const rsiDistance = Math.abs(rsi - 50);
-                let rawConfidence = 50 + (rsiDistance * 1.6) + (Math.random() * 3);
-                let finalConfidence = Math.min(98.5, Math.max(51.2, rawConfidence)).toFixed(1) + "%";
+                // --- 5. FINALIZE PREDICTION ---
+                let prediction = "NONE";
+                let confidenceBase = 50;
+                
+                if (upScore > downScore && upScore >= 2) {
+                    prediction = "UP";
+                    confidenceBase = 50 + (upScore * 8) + Math.random() * 4;
+                } else if (downScore > upScore && downScore >= 2) {
+                    prediction = "DOWN";
+                    confidenceBase = 50 + (downScore * 8) + Math.random() * 4;
+                } else {
+                    prediction = "SKIP";
+                }
 
-                if (shouldSkip) {
-                    const skipObject = { pred: "SKIP", conf: "Volatility Low", try: prediction, betPrice: currentBetPrice };
+                // Cap confidence at 98.5%
+                let finalConfidence = Math.min(98.5, confidenceBase).toFixed(1) + "%";
+                let tryPred = (rsi < 50 || ema9 > ema21) ? "UP" : "DOWN"; // What it would have guessed if forced
+
+                if (prediction === "SKIP") {
+                    const skipObject = { pred: "SKIP", conf: "Chop / Flat", try: tryPred, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
-                    displayPrediction("SKIP", "Volatility Low", prediction, currentBetPrice);
+                    displayPrediction("SKIP", "Chop / Flat", tryPred, currentBetPrice);
                 } else {
                     const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
