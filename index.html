@@ -202,7 +202,10 @@
         const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
         const ABI_CHAINLINK = ["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"];
         
-        const RPC_URLS = ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed1.binance.org"];
+        const RPC_URLS = [
+    "https://binance.llamarpc.com",
+    "https://bsc.meowrpc.com",
+    "https://bsc-rpc.publicnode.com"];
         let provider, contract, lastEpoch = 0, timerInterval;
         let lastLockedPrice = 0;
 
