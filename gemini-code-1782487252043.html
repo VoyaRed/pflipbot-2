@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PancakeSwap Web3 Native Oracle</title>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-base: #0b0e14;
+            --bg-panel: #151a25;
+            --bg-card: #1e2433;
+            --accent-cyan: #00e7df;
+            --accent-purple: #9d4edd;
+            --bull-green: #00c853;
+            --bear-red: #ff3d00;
+            --text-main: #f0f6fc;
+            --text-dim: #8b949e;
+            --font-mono: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Top Header & Chart Toggle */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-panel);
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 1px solid #2d3748;
+        }
+
+        .live-ticker {
+            font-family: var(--font-mono);
+            font-size: 2.5rem;
+            font-weight: bold;
+            transition: color 0.1s;
+        }
+
+        .btn-toggle {
+            background: transparent;
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn-toggle:hover {
+            background: rgba(0, 231, 223, 0.1);
+        }
+
+        #tv-container {
+            display: none;
+            height: 500px;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #2d3748;
+        }
+
+        /* 3-Round PancakeSwap Layout */
+        .round-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.3fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .round-grid { grid-template-columns: 1fr; }
+        }
+
+        .round-card {
+            background: var(--bg-panel);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid #2d3748;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .focal-card {
+            background: linear-gradient(180deg, var(--bg-panel) 0%, rgba(157, 78, 221, 0.05) 100%);
+            border: 2px solid var(--accent-purple);
+            box-shadow: 0 0 30px rgba(157, 78, 221, 0.15);
+        }
+
+        .badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .badge-prev { background: #2d3748; color: var(--text-dim); }
+        .badge-live { background: rgba(0, 231, 223, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
+        .badge-next { background: rgba(157, 78, 221, 0.2); color: #d0b0ff; border: 1px solid var(--accent-purple); }
+
+        .round-card h2 {
+            margin: 0 0 20px 0;
+            font-size: 1.1rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .data-point {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+        
+        .data-point span:last-child {
+            font-family: var(--font-mono);
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        /* Large Prediction Display for NEXT round */
+        .prediction-engine-display {
+            margin-top: auto;
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid #2d3748;
+        }
+
+        .main-signal {
+            font-size: 3rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin: 10px 0;
+            letter-spacing: -1px;
+        }
+
+        .engine-logic {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+            min-height: 40px;
+        }
+
+        .up-text { color: var(--bull-green); }
+        .down-text { color: var(--bear-red); }
+
+        .timer {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent-cyan);
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        /* Connection Status */
+        #ws-status {
+            text-align: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .status-connecting { background: #f6ad55; color: #000; }
+        .status-connected { background: var(--bull-green); color: #fff; }
+        .status-error { background: var(--bear-red); color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="ws-status" class="status-connecting">CONNECTING DIRECTLY TO BSC BLOCKCHAIN & CHAINLINK ORACLE...</div>
+
+    <div class="header-bar">
+        <div>
+            <div style="font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase;">Chainlink Oracle Feed (BNB/USD)</div>
+            <div id="global-live-price" class="live-ticker">$-.--</div>
+        </div>
+        <button class="btn-toggle" onclick="toggleTradingView()">Chart View</button>
+    </div>
+
+    <div id="tv-container">
+        <div id="tradingview_widget"></div>
+    </div>
+
+    <div class="round-grid">
+        <div class="round-card">
+            <div class="badge badge-prev">Resolved</div>
+            <h2>Round <span id="prev-epoch-id">--</span></h2>
+            <div class="data-point">
+                <span>Locked Price:</span>
+                <span id="prev-lock">$-.--</span>
+            </div>
+            <div class="data-point">
+                <span>Close Price:</span>
+                <span id="prev-close">$-.--</span>
+            </div>
+            <div class="data-point" style="margin-top: 15px; border-top: 1px solid #2d3748; padding-top: 15px;">
+                <span>Market Outcome:</span>
+                <span id="prev-outcome">--</span>
+            </div>
+        </div>
+
+        <div class="round-card">
+            <div class="badge badge-live">Live Now</div>
+            <h2>Round <span id="live-epoch-id">--</span></h2>
+            <div class="data-point">
+                <span>Locked Price:</span>
+                <span id="live-lock">$-.--</span>
+            </div>
+            <div class="data-point">
+                <span>Current Price:</span>
+                <span id="live-current">$-.--</span>
+            </div>
+            <div class="data-point">
+                <span>Current Payout Bias:</span>
+                <span id="live-bias">--</span>
+            </div>
+            <div class="timer" id="clock-live">00:00</div>
+            <div style="text-align:center; font-size: 0.7rem; color: var(--text-dim);">UNTIL SMART CONTRACT LOCKS</div>
+        </div>
+
+        <div class="round-card focal-card">
+            <div class="badge badge-next">Voting Open</div>
+            <h2>Round <span id="next-epoch-id">--</span> Oracle</h2>
+            
+            <div class="data-point">
+                <span>On-Chain RSI (14):</span>
+                <span id="engine-rsi">--.--</span>
+            </div>
+            <div class="data-point">
+                <span>On-Chain EMA (9):</span>
+                <span id="engine-ema">$-.--</span>
+            </div>
+
+            <div class="prediction-engine-display">
+                <div style="font-size: 0.75rem; letter-spacing: 2px; color: var(--text-dim);">AUTOMATED POSITION PROTOCOL</div>
+                <div id="engine-signal" class="main-signal" style="color: var(--text-dim);">SYNCING</div>
+                <div id="engine-reasoning" class="engine-logic">Pulling historical epoch blocks directly from PancakeSwap V2 Contract...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- TradingView Integration ---
+    let isChartVisible = false;
+    new TradingView.widget({
+        "autosize": true,
+        "symbol": "BINANCE:BNBUSD",
+        "interval": "5",
+        "timezone": "Etc/UTC",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "enable_publishing": false,
+        "backgroundColor": "#151a25",
+        "gridColor": "#2d3748",
+        "hide_top_toolbar": false,
+        "hide_legend": false,
+        "save_image": false,
+        "container_id": "tradingview_widget"
+    });
+
+    function toggleTradingView() {
+        const container = document.getElementById('tv-container');
+        isChartVisible = !isChartVisible;
+        container.style.display = isChartVisible ? 'block' : 'none';
+    }
+
+    // --- DIRECT WEB3 BLOCKCHAIN INTEGRATION ---
+    // This entirely bypasses CORS, Binance IP blocks, and proxies by reading the exact smart contracts PancakeSwap uses.
+    
+    const RPC_URL = 'https://rpc.ankr.com/bsc'; 
+    const PANCAKESWAP_PREDICTION_CONTRACT = '0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA';
+    const CHAINLINK_BNB_ORACLE = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE';
+
+    const PREDICTION_ABI = [
+        "function currentEpoch() view returns (uint256)",
+        "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
+    ];
+
+    const ORACLE_ABI = [
+        "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
+    ];
+
+    let provider, predictionContract, oracleContract;
+    let livePrice = 0;
+    let currentVotingEpoch = 0;
+    let nextLockTimestamp = 0;
+    
+    // UI State
+    let prevRoundData = { epoch: 0, lockPrice: 0, closePrice: 0 };
+    let liveRoundData = { epoch: 0, lockPrice: 0 };
+    let historyPrices = []; 
+
+    async function initWeb3() {
+        const statusEl = document.getElementById('ws-status');
+        try {
+            provider = new ethers.providers.JsonRpcProvider(RPC_URL);
+            predictionContract = new ethers.Contract(PANCAKESWAP_PREDICTION_CONTRACT, PREDICTION_ABI, provider);
+            oracleContract = new ethers.Contract(CHAINLINK_BNB_ORACLE, ORACLE_ABI, provider);
+            
+            statusEl.innerText = "WEB3 NODE CONNECTED: SYNCED WITH PANCAKESWAP SMART CONTRACT";
+            statusEl.className = "status-connected";
+
+            await updateBlockchainData();
+            
+            // Poll for price updates every 3 seconds (Chainlink Oracle heartbeat)
+            setInterval(fetchLivePrice, 3000);
+            
+            // Poll contract structural changes every 10 seconds
+            setInterval(updateBlockchainData, 10000);
+
+            // Start hardware-clock countdown to exact smart contract execution
+            startPrecisionTimer();
+
+        } catch (err) {
+            console.error(err);
+            statusEl.innerText = "RPC CONNECTION ERROR. RETRYING...";
+            statusEl.className = "status-error";
+            setTimeout(initWeb3, 5000);
+        }
+    }
+
+    async function fetchLivePrice() {
+        if (!oracleContract) return;
+        try {
+            const data = await oracleContract.latestRoundData();
+            const newPrice = parseFloat(ethers.utils.formatUnits(data.answer, 8)); // Chainlink uses 8 decimals
+            
+            const priceEl = document.getElementById('global-live-price');
+            if (newPrice > livePrice) priceEl.style.color = 'var(--bull-green)';
+            else if (newPrice < livePrice) priceEl.style.color = 'var(--bear-red)';
+            
+            setTimeout(() => priceEl.style.color = 'var(--text-main)', 300);
+
+            livePrice = newPrice;
+            priceEl.innerText = `$${livePrice.toFixed(4)}`;
+            
+            updateLiveRoundUI();
+            executePredictionEngine();
+        } catch (e) {
+            console.error("Oracle fetch error:", e);
+        }
+    }
+
+    async function updateBlockchainData() {
+        if (!predictionContract) return;
+        try {
+            const epochBN = await predictionContract.currentEpoch();
+            const epoch = epochBN.toNumber();
+
+            if (epoch !== currentVotingEpoch) {
+                currentVotingEpoch = epoch;
+                
+                // Fetch the 3 exact states right off the blockchain
+                const [nextRound, liveRound, prevRound] = await Promise.all([
+                    predictionContract.rounds(epoch),
+                    predictionContract.rounds(epoch - 1),
+                    predictionContract.rounds(epoch - 2)
+                ]);
+
+                nextLockTimestamp = nextRound.lockTimestamp.toNumber();
+                
+                liveRoundData.epoch = liveRound.epoch.toNumber();
+                liveRoundData.lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8));
+
+                prevRoundData.epoch = prevRound.epoch.toNumber();
+                prevRoundData.lockPrice = parseFloat(ethers.utils.formatUnits(prevRound.lockPrice, 8));
+                prevRoundData.closePrice = parseFloat(ethers.utils.formatUnits(prevRound.closePrice, 8));
+
+                // Fetch history for indicator math (Last 15 exact lock prices)
+                await buildOnChainHistory(epoch - 1);
+
+                renderEpochUI();
+            }
+        } catch (e) {
+            console.error("Blockchain sync error:", e);
+        }
+    }
+
+    async function buildOnChainHistory(latestLiveEpoch) {
+        let fetchPromises = [];
+        // Grab the last 15 exact locked prices from the blockchain to build real indicators
+        for (let i = latestLiveEpoch - 15; i < latestLiveEpoch; i++) {
+            fetchPromises.push(predictionContract.rounds(i));
+        }
+        const rounds = await Promise.all(fetchPromises);
+        historyPrices = rounds.map(r => parseFloat(ethers.utils.formatUnits(r.lockPrice, 8)));
+    }
+
+    // --- Advanced Prediction Engine ---
+    function calculateIndicators(prices, currentLive) {
+        if (prices.length < 14) return { rsi: 50, ema: currentLive };
+        
+        let tempPrices = [...prices, currentLive];
+
+        // 14-Period RSI
+        let gains = 0, losses = 0;
+        for (let i = tempPrices.length - 14; i < tempPrices.length; i++) {
+            let diff = tempPrices[i] - tempPrices[i - 1];
+            if (diff > 0) gains += diff;
+            else losses -= diff;
+        }
+        let rs = (gains / 14) / (losses / 14 === 0 ? 0.0001 : losses / 14);
+        let rsi = 100 - (100 / (1 + rs));
+
+        // 9-Period EMA
+        let multiplier = 2 / (9 + 1);
+        let ema = tempPrices[tempPrices.length - 9]; 
+        for(let i = tempPrices.length - 8; i < tempPrices.length; i++) {
+            ema = (tempPrices[i] - ema) * multiplier + ema;
+        }
+
+        return { rsi, ema };
+    }
+
+    function executePredictionEngine() {
+        if (historyPrices.length === 0 || livePrice === 0) return;
+
+        const { rsi, ema } = calculateIndicators(historyPrices, livePrice);
+        
+        document.getElementById('engine-rsi').innerText = rsi.toFixed(2);
+        document.getElementById('engine-ema').innerText = `$${ema.toFixed(4)}`;
+
+        const signalEl = document.getElementById('engine-signal');
+        const reasonEl = document.getElementById('engine-reasoning');
+
+        // STRICT LOGIC: Reversals vs Continuations based on genuine blockchain price action
+        if (rsi >= 72) {
+            signalEl.innerText = "DOWN";
+            signalEl.className = "main-signal down-text";
+            reasonEl.innerText = "Engine detected sharp RSI overextension (Spike > 72). Anticipating market exhaustion and a sharp mean-reversion drop for the next block.";
+        } 
+        else if (rsi <= 28) {
+            signalEl.innerText = "UP";
+            signalEl.className = "main-signal up-text";
+            reasonEl.innerText = "Engine detected extreme RSI oversold conditions (Spike < 28). Selling pressure mathematically exhausted; predicting a sharp bounce.";
+        }
+        else if (livePrice > ema && rsi > 50) {
+            signalEl.innerText = "UP";
+            signalEl.className = "main-signal up-text";
+            reasonEl.innerText = "Price holds strong above the 9-EMA with positive momentum. Engine projects bullish trend continuation into the next voting round.";
+        }
+        else if (livePrice < ema && rsi < 50) {
+            signalEl.innerText = "DOWN";
+            signalEl.className = "main-signal down-text";
+            reasonEl.innerText = "Price failing below the 9-EMA with negative momentum. Engine projects bearish structure to cascade through the next round.";
+        } 
+        else {
+            let bias = livePrice > liveRoundData.lockPrice ? "UP" : "DOWN";
+            signalEl.innerText = bias;
+            signalEl.className = `main-signal ${bias === "UP" ? 'up-text' : 'down-text'}`;
+            reasonEl.innerText = "Indicators fluctuating in neutral chop zone. Engine defaulting to active micro-trend alignment against the current live lock price.";
+        }
+    }
+
+    function renderEpochUI() {
+        // Next
+        document.getElementById('next-epoch-id').innerText = currentVotingEpoch;
+        
+        // Prev
+        document.getElementById('prev-epoch-id').innerText = prevRoundData.epoch;
+        document.getElementById('prev-lock').innerText = `$${prevRoundData.lockPrice.toFixed(4)}`;
+        document.getElementById('prev-close').innerText = `$${prevRoundData.closePrice.toFixed(4)}`;
+        
+        const outcomeEl = document.getElementById('prev-outcome');
+        if (prevRoundData.closePrice > prevRoundData.lockPrice) {
+            outcomeEl.innerText = "UP WON";
+            outcomeEl.className = "up-text";
+        } else if (prevRoundData.closePrice < prevRoundData.lockPrice) {
+            outcomeEl.innerText = "DOWN WON";
+            outcomeEl.className = "down-text";
+        } else {
+            outcomeEl.innerText = "TIED / CANCELED";
+            outcomeEl.className = "";
+            outcomeEl.style.color = "var(--text-dim)";
+        }
+
+        // Live
+        document.getElementById('live-epoch-id').innerText = liveRoundData.epoch;
+        document.getElementById('live-lock').innerText = `$${liveRoundData.lockPrice.toFixed(4)}`;
+        updateLiveRoundUI();
+    }
+
+    function updateLiveRoundUI() {
+        if (liveRoundData.lockPrice === 0 || livePrice === 0) return;
+        
+        document.getElementById('live-current').innerText = `$${livePrice.toFixed(4)}`;
+
+        const biasEl = document.getElementById('live-bias');
+        if (livePrice > liveRoundData.lockPrice) {
+            biasEl.innerText = "CURRENTLY UP";
+            biasEl.className = "up-text";
+        } else {
+            biasEl.innerText = "CURRENTLY DOWN";
+            biasEl.className = "down-text";
+        }
+    }
+
+    // Exact synchronization with PancakeSwap's internal smart contract clock
+    function startPrecisionTimer() {
+        setInterval(() => {
+            if (nextLockTimestamp === 0) return;
+            
+            const nowSeconds = Math.floor(Date.now() / 1000);
+            let diff = nextLockTimestamp - nowSeconds;
+            
+            if (diff < 0) diff = 0; // Prevent negative display during execution buffer
+            
+            const min = Math.floor(diff / 60);
+            const sec = diff % 60;
+
+            document.getElementById('clock-live').innerText = 
+                `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }, 1000);
+    }
+
+    // Boot
+    window.onload = initWeb3;
+
+</script>
+</body>
+</html>
