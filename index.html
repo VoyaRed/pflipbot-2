@@ -210,7 +210,7 @@
                 document.getElementById('bot-prediction').innerText = "Analyzing...";
                 
                 // Fetch live 5m candle data from Binance
-                const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15");
+                const res = await fetch("https://api.binance.us/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=15");
                 const candles = await res.json();
                 
                 // Calculate simple RSI based on close prices
