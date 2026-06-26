@@ -15,6 +15,11 @@
         .chart-box { height: 400px; width: 100%; margin-bottom: 20px; }
         .stat-val { font-size: 1.5rem; font-weight: bold; color: #00e7df; }
         .win-rate { font-size: 2rem; color: var(--up); }
+        
+        /* New Progress Bar Styles */
+        .progress-bg { background: #2d3748; border-radius: 4px; height: 8px; width: 100%; overflow: hidden; margin-top: 15px; }
+        .progress-fill { background: #00e7df; height: 100%; width: 0%; transition: width 1s linear; }
+        .time-text { font-size: 0.85rem; color: #a0aec0; margin-top: 5px; text-align: right; }
     </style>
 </head>
 <body>
@@ -22,9 +27,22 @@
         <div id="tv-container" class="chart-box"></div>
         
         <div class="grid">
-            <div class="card"><h3>Previous Round</h3><div id="prev-val" class="stat-val">---</div></div>
-            <div class="card"><h3>Live Round</h3><div id="live-epoch" class="stat-val">Syncing...</div></div>
-            <div class="card"><h3>Auto-Win Rate</h3><div class="win-rate" id="win-rate">0.00%</div></div>
+            <div class="card">
+                <h3>Last Closed Round</h3>
+                <div id="prev-val" class="stat-val">---</div>
+            </div>
+            
+            <div class="card">
+                <h3>Live Round</h3>
+                <div id="live-epoch" class="stat-val">Finding best RPC...</div>
+                <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
+                <div id="time-left" class="time-text">Calculating time...</div>
+            </div>
+            
+            <div class="card">
+                <h3>Auto-Win Rate</h3>
+                <div class="win-rate" id="win-rate">0.00%</div>
+            </div>
         </div>
 
         <div class="card">
@@ -39,67 +57,145 @@
         const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // BSC Contract Configuration
         const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
-        
-        // Corrected ABI to match PancakeSwap V2 Prediction exactly
         const ABI = [
             "function currentEpoch() view returns (uint256)", 
             "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
         ];
         
-        const provider = new ethers.providers.JsonRpcProvider("https://bsc-rpc.publicnode.com");
-        const contract = new ethers.Contract(PREDICT_ADDR, ABI, provider);
+        // Array of reliable BSC RPC nodes
+        const RPC_URLS = [
+            "https://bsc-rpc.publicnode.com",
+            "https://bsc-dataseed1.binance.org",
+            "https://binance.llamarpc.com"
+        ];
 
+        let provider;
+        let contract;
         let lastEpoch = 0;
+        let timerInterval;
 
         async function init() {
             new TradingView.widget({"container_id":"tv-container","symbol":"BINANCE:BNBUSD","theme":"dark","autosize":true});
             
-            // Run immediately, then check every 5 seconds
-            checkRound();
+            // 1. Race the RPCs to find the fastest connection
+            try {
+                const fastest = await findFastestRPC();
+                provider = fastest.provider;
+                contract = fastest.contract;
+                console.log("Connected to fastest RPC:", provider.connection.url);
+            } catch (error) {
+                document.getElementById('live-epoch').innerText = "RPC Failure. Retrying...";
+                setTimeout(init, 5000);
+                return;
+            }
+
+            // 2. Fetch initial data and start loop
+            await initialLoad();
             setInterval(checkRound, 5000);
+        }
+
+        // Races all RPC nodes and returns the first one that successfully fetches currentEpoch
+        async function findFastestRPC() {
+            const promises = RPC_URLS.map(async (url) => {
+                const p = new ethers.providers.JsonRpcProvider(url);
+                const c = new ethers.Contract(PREDICT_ADDR, ABI, p);
+                await c.currentEpoch(); 
+                return { provider: p, contract: c };
+            });
+            return Promise.any(promises); 
+        }
+
+        async function initialLoad() {
+            try {
+                const epoch = (await contract.currentEpoch()).toNumber();
+                
+                // Immediately check and populate the last fully resolved round (current - 2)
+                if (epoch > 2) {
+                    await verifyResult(epoch - 2);
+                }
+                
+                // Jump straight into the standard tracking loop
+                checkRound();
+            } catch (e) {
+                console.error("Error on initial load:", e);
+            }
         }
 
         async function checkRound() {
             try {
                 const epoch = (await contract.currentEpoch()).toNumber();
+                const liveRoundData = await contract.rounds(epoch);
+                
                 document.getElementById('live-epoch').innerText = `Epoch ${epoch}`;
 
-                // Fix: Actively fetch and display the previous round's status
+                // Handle Timer Progress Bar based on the Live Round's lockTimestamp
+                startTimer(liveRoundData.lockTimestamp.toNumber());
+
+                // Handle Last Closed Round Status (Current - 1 is locked, Current - 2 is closed)
                 if (epoch > 1) {
                     const prevEpoch = epoch - 1;
                     const prevRound = await contract.rounds(prevEpoch);
-                    
                     const lockPrice = ethers.utils.formatUnits(prevRound.lockPrice, 8);
                     const closePrice = ethers.utils.formatUnits(prevRound.closePrice, 8);
                     
-                    // Only show UP/DOWN if the oracle has actually closed the round
                     if (prevRound.oracleCalled) {
                         const actualResult = parseFloat(closePrice) > parseFloat(lockPrice) ? "UP" : "DOWN";
-                        document.getElementById('prev-val').innerText = `Epoch ${prevEpoch}: ${actualResult}`;
-                        // Color code the outcome
-                        document.getElementById('prev-val').style.color = actualResult === "UP" ? "var(--up)" : "var(--down)";
+                        const prevValEl = document.getElementById('prev-val');
+                        prevValEl.innerText = `Epoch ${prevEpoch}: ${actualResult}`;
+                        prevValEl.style.color = actualResult === "UP" ? "var(--up)" : "var(--down)";
                     } else {
-                        document.getElementById('prev-val').innerText = `Epoch ${prevEpoch}: Closing...`;
+                        document.getElementById('prev-val').innerText = `Epoch ${prevEpoch}: Resolving...`;
                         document.getElementById('prev-val').style.color = "#00e7df";
                     }
                 }
 
+                // If a new epoch just started, log the previous one to Supabase/Ledger
                 if (epoch > lastEpoch && lastEpoch !== 0) {
-                    verifyResult(lastEpoch);
+                    // We check lastEpoch - 1 because lastEpoch is just locking now, 
+                    // and the one before it is the one that actually closed.
+                    verifyResult(lastEpoch - 1); 
                 }
                 lastEpoch = epoch;
                 
             } catch(e) { 
-                // Fix: Log the actual error instead of hiding it
                 console.error("RPC or Contract Error:", e); 
             }
         }
 
-        async function verifyResult(epoch) {
+        function startTimer(lockTimestamp) {
+            clearInterval(timerInterval);
+            const bar = document.getElementById('progress-bar');
+            const text = document.getElementById('time-left');
+
+            timerInterval = setInterval(() => {
+                const now = Math.floor(Date.now() / 1000);
+                const secondsLeft = lockTimestamp - now;
+                const totalRoundSeconds = 300; // PancakeSwap rounds are exactly 5 mins
+
+                if (secondsLeft <= 0) {
+                    text.innerText = "Locking / Calculating...";
+                    bar.style.width = "100%";
+                    clearInterval(timerInterval);
+                } else {
+                    const mins = Math.floor(secondsLeft / 60);
+                    const secs = secondsLeft % 60;
+                    text.innerText = `${mins}:${secs.toString().padStart(2, '0')} remaining`;
+
+                    // Calculate percentage for progress bar
+                    let percent = ((totalRoundSeconds - secondsLeft) / totalRoundSeconds) * 100;
+                    // Clamp between 0 and 100 just in case
+                    percent = Math.max(0, Math.min(100, percent));
+                    bar.style.width = `${percent}%`;
+                }
+            }, 1000);
+        }
+
+        async function verifyResult(epochToCheck) {
             try {
-                const round = await contract.rounds(epoch);
+                if (epochToCheck <= 0) return;
+                
+                const round = await contract.rounds(epochToCheck);
                 if (!round.oracleCalled) return; // Oracle hasn't resolved it yet
 
                 const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
@@ -107,26 +203,23 @@
                 const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
 
                 // Retrieve the bot's prediction for this epoch from LocalStorage
-                const botPrediction = localStorage.getItem(`pred_${epoch}`);
+                const botPrediction = localStorage.getItem(`pred_${epochToCheck}`);
                 
                 if (botPrediction) {
                     const isWin = (botPrediction === actualResult) ? "WIN" : "LOSS";
                     
                     // Log to Supabase
                     const { error } = await supabase.from('prediction_logs').insert([{ 
-                        epoch_id: epoch,
+                        epoch_id: epochToCheck,
                         predicted_side: botPrediction,
                         result: isWin 
                     }]);
 
-                    if (error) {
-                        console.error("Supabase Error:", error);
-                    } else {
-                        renderLedger(epoch, botPrediction, actualResult, isWin);
-                    }
+                    if (error) console.error("Supabase Error:", error);
+                    else renderLedger(epochToCheck, botPrediction, actualResult, isWin);
                 } else {
-                    // Fallback log if no bot prediction is found in storage
-                    renderLedger(epoch, "None", actualResult, "N/A");
+                    // Render historical data even if bot didn't trade it
+                    renderLedger(epochToCheck, "None", actualResult, "N/A");
                 }
             } catch(e) {
                 console.error("Error verifying result:", e);
@@ -137,6 +230,9 @@
             const ledger = document.getElementById('ledger');
             const color = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "#888");
             
+            // Check if it's already in the ledger so we don't duplicate on page reloads
+            if (ledger.innerHTML.includes(`Epoch ${epoch}`)) return;
+
             ledger.innerHTML = `<div style="margin-bottom: 5px; border-bottom: 1px solid #2d3748; padding-bottom: 5px;">
                 <strong>Epoch ${epoch}</strong> — Pred: ${predicted} | Actual: ${actual} | 
                 <span style="color: ${color}; font-weight: bold;">${result}</span>
