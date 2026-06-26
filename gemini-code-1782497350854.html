@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PancakeSwap Pro: Algorithmic Terminal (Supabase Enabled)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --bg: #0b0e14; --panel: #151a25; --up: #00c853; --down: #ff3d00; --text: #f0f6fc; }
+        body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; padding: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: var(--panel); padding: 20px; border-radius: 12px; border: 1px solid #2d3748; }
+        .data { font-size: 2.2rem; font-weight: bold; color: #00e7df; }
+        .signal { font-size: 2.5rem; font-weight: 900; }
+        .stat-box { font-size: 1.2rem; margin-top: 10px; }
+        #ledger { height: 150px; overflow-y: scroll; font-size: 0.8rem; border-top: 1px solid #333; margin-top: 10px; background: #0b0e14; padding: 5px; }
+        #supabase-status { font-size: 0.7rem; color: #8b949e; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="grid">
+        <div class="card">
+            <h3>Live Oracle (BNB/USD)</h3>
+            <div id="price" class="data">$---.--</div>
+            <p>Bot Status: <span id="status">Syncing...</span></p>
+            <div id="supabase-status">Supabase: Initializing...</div>
+        </div>
+        <div class="card">
+            <h3>Next Round Prediction</h3>
+            <div id="signal" class="signal">...</div>
+            <div id="reasoning">Analyzing momentum...</div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <h3>Paper Trading Performance Ledger</h3>
+        <div class="stat-box">Win Rate: <span id="win-rate">0.00%</span></div>
+        <div id="ledger"></div>
+    </div>
+
+    <script>
+        // Supabase Configuration
+        const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // Constants
+        const ORACLE_ADDR = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+        const RPC = "https://bsc-dataseed.binance.org/";
+        
+        let priceHistory = [];
+        let performance = JSON.parse(localStorage.getItem('ledger') || '[]');
+
+        // Logging to Supabase
+        async function logToSupabase(side, price) {
+            try {
+                const { error } = await supabase.from('prediction_logs').insert([
+                    { predicted_side: side, price: price }
+                ]);
+                if (error) throw error;
+                document.getElementById('supabase-status').innerText = "Supabase: Logged trade " + side;
+            } catch (err) {
+                document.getElementById('supabase-status').innerText = "Supabase Error: " + err.message;
+            }
+        }
+
+        async function init() {
+            document.getElementById('supabase-status').innerText = "Supabase: Connected";
+            const provider = new ethers.providers.JsonRpcProvider(RPC);
+            const oracle = new ethers.Contract(ORACLE_ADDR, ["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"], provider);
+
+            async function update() {
+                try {
+                    const data = await oracle.latestRoundData();
+                    const price = parseFloat(ethers.utils.formatUnits(data[1], 8));
+                    document.getElementById('price').innerText = `$${price.toFixed(4)}`;
+                    
+                    priceHistory.push(price);
+                    if(priceHistory.length > 50) priceHistory.shift();
+                    
+                    runBot(price);
+                    document.getElementById('status').innerText = "Connected & Tracking";
+                } catch(e) { document.getElementById('status').innerText = "Reconnecting..."; }
+            }
+            setInterval(update, 3000);
+            update();
+        }
+
+        function runBot(price) {
+            if(priceHistory.length < 14) return;
+            
+            let gains = 0, losses = 0;
+            for(let i=1; i<14; i++) {
+                let diff = priceHistory[priceHistory.length-i] - priceHistory[priceHistory.length-i-1];
+                if(diff > 0) gains += diff; else losses -= Math.abs(diff);
+            }
+            let rsi = 100 - (100 / (1 + (gains/losses)));
+            
+            const signalEl = document.getElementById('signal');
+            const reasonEl = document.getElementById('reasoning');
+            
+            // Logic to prevent redundant logging (only log when state changes)
+            const currentState = signalEl.innerText;
+            
+            if(rsi > 70 && currentState !== "DOWN (BEAR)") {
+                signalEl.innerText = "DOWN (BEAR)";
+                signalEl.className = "signal down";
+                reasonEl.innerText = "Overbought (RSI > 70). Logging DOWN.";
+                logToSupabase('DOWN', price);
+                saveLocalTrade('DOWN');
+            } else if(rsi < 30 && currentState !== "UP (BULL)") {
+                signalEl.innerText = "UP (BULL)";
+                signalEl.className = "signal up";
+                reasonEl.innerText = "Oversold (RSI < 30). Logging UP.";
+                logToSupabase('UP', price);
+                saveLocalTrade('UP');
+            }
+        }
+
+        function saveLocalTrade(side) {
+            performance.push({ side: side, timestamp: new Date().toLocaleTimeString() });
+            localStorage.setItem('ledger', JSON.stringify(performance));
+            renderLedger();
+        }
+
+        function renderLedger() {
+            const ledgerEl = document.getElementById('ledger');
+            ledgerEl.innerHTML = performance.map(t => `<div>${t.timestamp}: ${t.side}</div>`).join('');
+        }
+
+        window.onload = () => {
+            init();
+            renderLedger();
+        };
+    </script>
+</body>
+</html>
