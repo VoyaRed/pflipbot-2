@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PancakeSwap Pro: Auto-Win Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <style>
+        :root { --bg: #0b0e14; --panel: #151a25; --up: #00c853; --down: #ff3d00; --text: #f0f6fc; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .card { background: var(--panel); padding: 15px; border-radius: 12px; border: 1px solid #2d3748; }
+        .chart-box { height: 400px; width: 100%; margin-bottom: 20px; }
+        .stat-val { font-size: 1.5rem; font-weight: bold; color: #00e7df; }
+        .win-rate { font-size: 2rem; color: var(--up); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="tv-container" class="chart-box"></div>
+        
+        <div class="grid">
+            <div class="card"><h3>Previous Round</h3><div id="prev-val" class="stat-val">---</div></div>
+            <div class="card"><h3>Live Round</h3><div id="live-epoch" class="stat-val">Syncing...</div></div>
+            <div class="card"><h3>Auto-Win Rate</h3><div class="win-rate" id="win-rate">0.00%</div></div>
+        </div>
+
+        <div class="card">
+            <h3>Trade Execution Ledger</h3>
+            <div id="ledger" style="height: 150px; overflow-y: scroll; font-size: 0.8rem;"></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
+        const ABI = ["function currentEpoch() view returns (uint256)", "function rounds(uint256) view returns (uint256, uint40, uint40, uint40, int256, int256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, bool, bool)"];
+        
+        const provider = new ethers.providers.JsonRpcProvider("https://bsc-rpc.publicnode.com");
+        const contract = new ethers.Contract(PREDICT_ADDR, ABI, provider);
+
+        let lastEpoch = 0;
+
+        async function init() {
+            new TradingView.widget({"container_id":"tv-container","symbol":"BINANCE:BNBUSD","theme":"dark","autosize":true});
+            setInterval(checkRound, 5000);
+        }
+
+        async function checkRound() {
+            try {
+                const epoch = (await contract.currentEpoch()).toNumber();
+                document.getElementById('live-epoch').innerText = `Epoch ${epoch}`;
+
+                if (epoch > lastEpoch && lastEpoch !== 0) {
+                    verifyResult(lastEpoch);
+                }
+                lastEpoch = epoch;
+            } catch(e) { console.log("Waiting for RPC..."); }
+        }
+
+        async function verifyResult(epoch) {
+            const round = await contract.rounds(epoch);
+            const lockPrice = ethers.utils.formatUnits(round[4], 8);
+            const closePrice = ethers.utils.formatUnits(round[5], 8);
+            const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
+
+            // Retrieve the bot's prediction for this epoch from LocalStorage
+            const botPrediction = localStorage.getItem(`pred_${epoch}`);
+            
+            if (botPrediction) {
+                const isWin = (botPrediction === actualResult) ? "WIN" : "LOSS";
+                
+                // Log to Supabase
+                await supabase.from('prediction_logs').insert([{ 
+                    epoch_id: epoch,
+                    predicted_side: botPrediction,
+                    result: isWin 
+                }]);
+                
+                renderLedger();
+            }
+        }
+
+        function renderLedger() {
+            // Simplified rendering logic
+            document.getElementById('ledger').innerHTML += `<div>Round checked... Result updated to Supabase.</div>`;
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
