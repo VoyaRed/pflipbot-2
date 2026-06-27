@@ -170,11 +170,11 @@ async function generatePrediction(targetEpoch) {
        // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data]; // 👈 CHANGE THIS LINE (Add the)
+            let emaArray = [data]; // 👈 Ensure you have the right here!
             for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             return emaArray;
         };
-
+        
         // EMA & MACD
         const ema9 = calculateEMAArray(closes, 9)[closes.length - 1];
         const ema21 = calculateEMAArray(closes, 21)[closes.length - 1];
