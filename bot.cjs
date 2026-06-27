@@ -167,12 +167,14 @@ async function generatePrediction(targetEpoch) {
         const upperBB = sma + (stdDev * 2);
         const lowerBB = sma - (stdDev * 2);
 
-       // EMA Helper
+       // EMA Helper Function (FIXED)
         const calculateEMAArray = (data, period) => {
-            const k = 2 / (period + 1);
-            let emaArray = [data]; // 👈 Ensure you have the right here!
-            for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
-            return emaArray;
+        const k = 2 / (period + 1);
+        let emaArray = [data[0]]; // ✅ Uses the first value, preventing NaN chains
+        for (let i = 1; i < data.length; i++) {
+            emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
+        }
+        return emaArray;
         };
         
         // EMA & MACD
