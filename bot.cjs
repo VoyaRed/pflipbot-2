@@ -100,6 +100,20 @@ async function generatePrediction(targetEpoch) {
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
 
+        // market stats - ox :)
+        async function updateMarketStats(rsi, macd, price) {
+            const { error } = await supabaseClient
+                .from('market_stats')
+                .upsert([{ 
+                    id: 1, // Single row for global stats
+                    rsi: rsi, 
+                    macd: macd, 
+                    price: price,
+                    updated_at: new Date().toISOString() 
+                }]);
+            if (error) console.error("Error updating stats:", error);
+         }
+
         // RSI
         let gains = 0, losses = 0;
         for(let i = closes.length - 14; i < closes.length; i++) {
