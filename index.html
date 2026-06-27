@@ -593,18 +593,23 @@
             } catch (e) { console.error("Brain Failed:", e); }
         }
 
-        function displayPrediction(prediction, confidence, tryPred = null, betPrice = null) {
-            const predEl = document.getElementById('bot-prediction');
-            const betPriceEl = document.getElementById('bot-bet-price');
+        function displayPrediction(prediction, confidence, tryPred = null, tryConf = null, betPrice = null) {
+    const predEl = document.getElementById('bot-prediction');
+    const betPriceEl = document.getElementById('bot-bet-price');
 
-            if (prediction === "SKIP") {
-                const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
-                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred}</span>)</span>`;
-                predEl.className = "prediction-badge pred-waiting";
-            } else {
-                predEl.innerText = `${prediction} (${confidence})`;
-                predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
-                }
+    if (prediction === "SKIP") {
+        const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
+        const displayConf = tryConf || "--%";
+        predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${displayConf})</span>)</span>`;
+        predEl.className = "prediction-badge pred-waiting";
+        document.getElementById('next-conf').innerText = "SKIP";
+    } else {
+        predEl.innerText = `${prediction} (${confidence})`;
+        predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
+        document.getElementById('next-conf').innerText = confidence;
+    }
+    
+    betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
         }
 
         function startTimer(targetTimestamp) {
