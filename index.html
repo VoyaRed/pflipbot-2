@@ -372,6 +372,7 @@
         let provider, contract, oracleContract, timerInterval;
         let lastLockedPrice = 0;
         let notifiedEpochs = new Set();
+        let dynamicResultCache = {}; // <-- ADD THIS LINE
 
         async function init() {
             initTradingView(); 
@@ -486,16 +487,47 @@
                     }
                 }
 
-                // 2. Refresh Visual Indicators
-                await updateMarketVisualsFromDB();
-
-                // 3. Sync with Bot Mind (Supabase)
+                // 3. Sync with Bot Mind & Calculate Results Dynamically
                 const { data } = await supabaseClient.from('prediction_logs')
                     .select('*').order('epoch_id', { ascending: false }).limit(20);
 
-                if (data) renderDashboardFromDB(data, currentEpoch, liveEpoch, prevEpoch);
-
-            } catch (error) { console.warn("Sync Error:", error); }
+                if (data) {
+                    for (let log of data) {
+                        // Only calculate results for rounds that are officially expired
+                        if (log.epoch_id <= prevEpoch) {
+                            // Check our local cache first to save network calls
+                            if (dynamicResultCache[log.epoch_id]) {
+                                log.result = dynamicResultCache[log.epoch_id];
+                            } else {
+                                // If not cached, ask the blockchain what actually happened
+                                try {
+                                    const round = await contract.rounds(log.epoch_id);
+                                    if (round.oracleCalled) {
+                                        const lockP = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
+                                        const closeP = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
+                                        const actualMarketResult = closeP > lockP ? "UP" : "DOWN";
+                                        
+                                        // Grade the bot's homework
+                                        let finalStatus;
+                                        if (log.predicted_side === "SKIP") {
+                                            finalStatus = "SKIP/" + actualMarketResult;
+                                        } else {
+                                            finalStatus = (log.predicted_side === actualMarketResult) ? "WIN" : "LOSS";
+                                        }
+                                        
+                                        log.result = finalStatus;
+                                        dynamicResultCache[log.epoch_id] = finalStatus; // Save to cache
+                                    }
+                                } catch (e) {
+                                    console.warn(`RPC fetch failed for epoch ${log.epoch_id}`, e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Render the dashboard with our newly enriched data
+                    renderDashboardFromDB(data, currentEpoch, liveEpoch, prevEpoch);
+                }
             
             setTimeout(runSyncLoop, 10000); 
         }
