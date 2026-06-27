@@ -141,7 +141,7 @@ async function generatePrediction(targetEpoch) {
                     id: 1, // Single row for global stats
                     rsi: rsi, 
                     macd: macd, 
-                    price: price,
+                //    price: price,
                     updated_at: new Date().toISOString() 
                 }]);
             if (error) console.error("Error updating stats:", error);
@@ -250,6 +250,8 @@ async function generatePrediction(targetEpoch) {
             confidence: displayConf
         }]);
         if (error) console.error("❌ Early Supabase insert error:", error);
+
+        await updateMarketStats(rsi, currentMACD, currentClose);
 
     } catch (e) {
         console.error("Brain Failed:", e);
