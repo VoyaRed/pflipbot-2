@@ -92,7 +92,7 @@ async function updateMarketStats(rsi, macd, price) {
             id: 1, 
             rsi: rsi, 
             macd: macd, 
-         //   price: price,
+            price: price,
             updated_at: new Date().toISOString() 
         }]);
     if (error) console.error("Error updating stats:", error);
