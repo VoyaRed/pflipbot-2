@@ -1,0 +1,13 @@
+{
+  "name": "upsidedowncake-bot",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "dependencies": {
+    "ethers": "^5.7.2",
+    "@supabase/supabase-js": "^2.0.0",
+    "node-fetch": "^2.6.7"
+  },
+  "scripts": {
+    "start": "node bot.js"
+  }
+}
