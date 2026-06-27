@@ -87,14 +87,34 @@ async function checkRound() {
 
 async function generatePrediction(targetEpoch) {
     try {
-        // 1. Define URL and Browser-like Headers
-        const url = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
+
+        // 1. Access the variable you set in Render
+        const apiKey = process.env.SCRAPINGBEE_KEY;
+    
+        // 2. Safety check: Ensure the key actually exists
+        if (!apiKey) {
+            console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
+            return; // Stop the function if we don't have a key
+        }
+        const targetUrl = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
+       
+      
+        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=YOUR_API_KEY_HERE&url=${encodeURIComponent(targetUrl)}`;
         const options = {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
                 'Accept': 'application/json'
             }
         };
+
+        try {
+        const res = await fetch(scrapingBeeUrl);
+        
+        if (!res.ok) {
+            throw new Error(`ScrapingBee failed with status: ${res.status}`);
+        }
+
+        const candles = await res.json();
 
         // 2. Fetch with Retry Logic (Try 3 times)
         let candles = null;
