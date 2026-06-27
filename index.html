@@ -620,7 +620,7 @@
     async function updateDashboard() {
         try {
             // --- FETCH MARKET STATS (RSI & MACD) ---
-            const { data: statsData, error: statsError } = await supabase
+            const { data: statsData, error: statsError } = await supabaseClient
                 .from('market_stats')
                 .select('rsi, macd')
                 .eq('id', 1)
@@ -633,7 +633,7 @@
             }
 
             // --- FETCH LATEST PREDICTION ---
-            const { data: predData, error: predError } = await supabase
+            const { data: predData, error: predError } = await supabaseClient
                 .from('prediction_logs')
                 .select('epoch_id, predicted_side, confidence')
                 .order('epoch_id', { ascending: false })
