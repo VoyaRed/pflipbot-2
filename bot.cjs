@@ -2,11 +2,6 @@
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
-const res = await fetch(url, {
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-});
 
 // --- SUPABASE CONFIG ---
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
