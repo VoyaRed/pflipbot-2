@@ -3,99 +3,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>cake</title>
+    <title>UpsideDownCake Facility</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Kanit:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root { 
-            --bg: #08060b; 
-            --panel: #27262c; 
-            --up: #31d0aa; 
-            --down: #ed4b9e; 
+            /* The Science-Cake Palette */
+            --bg-dark: #08060b;
+            --bg-accent: #1a1025;
+            --panel: rgba(39, 38, 44, 0.7); /* Glassy Panel */
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --up: #31d0aa;   /* Classic Up */
+            --down: #ed4b9e; /* Classic Down */
             --text: #f4eeff; 
             --subtext: #8f90b0;
             --primary: #7645d9;
-            --primary-glow: rgba(118, 69, 217, 0.5);
+            --primary-glow: rgba(118, 69, 217, 0.6);
         }
-        body { background: var(--bg); color: var(--text); font-family: 'Kanit', sans-serif; margin: 0; padding: 20px; }
-        .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        
+        body { 
+            background: linear-gradient(135deg, var(--bg-dark), var(--bg-accent), var(--bg-dark));
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: var(--text); 
+            font-family: 'Kanit', sans-serif; 
+            margin: 0; padding: 20px; 
+            min-height: 100vh;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Header Branding */
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { 
+            margin: 0; font-size: 3rem; font-weight: 800; letter-spacing: -1px; 
+            background: linear-gradient(90deg, #7645d9, #31d0aa, #ed4b9e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header span { 
+            color: var(--subtext); font-size: 0.95rem; letter-spacing: 1px; 
+            text-transform: uppercase; font-family: 'Space Mono', monospace; 
+        }
+
+        .chart-box { 
+            height: 400px; width: 100%; margin-bottom: 30px; 
+            border-radius: 24px; overflow: hidden; 
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3); 
+            backdrop-filter: blur(10px);
+        }
         
         .rounds-container { display: flex; justify-content: center; gap: 24px; margin-bottom: 40px; flex-wrap: wrap; }
         
         .card { 
             background: var(--panel); 
+            backdrop-filter: blur(12px);
             border-radius: 24px; 
-            width: 310px; 
+            width: 320px; 
             padding: 0; 
-            display: flex; 
-            flex-direction: column; 
+            display: flex; flex-direction: column; 
             overflow: hidden;
-            box-shadow: 0px 2px 12px -8px rgba(25, 19, 38, 0.1), 0px 1px 1px rgba(25, 19, 38, 0.05);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
         }
-        .card:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4); }
+        .card:hover { transform: translateY(-8px); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); }
         
-        .card-header { padding: 15px 20px; font-weight: bold; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center; }
-        .card-body { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; flex-grow: 1; }
+        .card-header { 
+            padding: 15px 20px; font-weight: 800; font-family: 'Kanit', sans-serif;
+            font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center; 
+            background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--panel-border);
+        }
         
-        .expired { opacity: 0.8; }
-        .expired .card-header { background: #353547; color: var(--subtext); }
+        .card-body { padding: 25px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; flex-grow: 1; }
         
+        .expired { opacity: 0.85; filter: grayscale(10%); }
+        .expired .card-header { color: var(--subtext); }
+        
+        /* The Live Test Chamber Glow */
         @keyframes pulseGlow {
             0% { box-shadow: 0 0 0 0 var(--primary-glow); }
             70% { box-shadow: 0 0 0 15px rgba(118, 69, 217, 0); }
             100% { box-shadow: 0 0 0 0 rgba(118, 69, 217, 0); }
         }
-        .live { border: 2px solid var(--primary); transform: scale(1.02); animation: pulseGlow 2.5s infinite; z-index: 10; }
+        .live { border: 2px solid var(--primary); transform: scale(1.02); animation: pulseGlow 3s infinite; z-index: 10; }
         .live:hover { transform: scale(1.02) translateY(-8px); }
-        .live .card-header { background: var(--primary); color: white; }
-        
-        .next .card-header { background: var(--primary); color: white; }
+        .live .card-header { background: var(--primary); color: white; border-bottom: none; }
         
         .prediction-badge { 
-            padding: 10px 15px; border-radius: 12px; font-size: 1.4rem; font-weight: 800; width: 100%; 
-            text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
-            transition: all 0.3s ease;
+            padding: 12px 15px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; 
+            text-align: center; box-sizing: border-box; letter-spacing: 1px;
+            font-family: 'Kanit', sans-serif; text-transform: uppercase;
+            transition: all 0.3s ease; display: flex; justify-content: center; align-items: center; gap: 10px;
+            box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
         }
-        .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .pred-waiting { background: #353547; color: var(--subtext); box-shadow: none; font-size: 1.2rem; }
-
-        .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; margin-bottom: 5px; }
+        .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); border: none; }
+        .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); border: none; }
+        .pred-waiting { background: rgba(0,0,0,0.4); color: var(--subtext); border: 1px dashed var(--subtext); font-size: 1.2rem; box-shadow: none; }
         
-        .progress-bg { background: #3b3a43; border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); margin-bottom: 10px; }
-        .progress-fill { background: linear-gradient(90deg, #5324ab, #7645d9); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
+        .conf-text { font-size: 1rem; font-weight: 600; opacity: 0.95; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 8px; }
+
+        .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; margin-bottom: 5px; color: var(--text); font-weight: 600;}
+        
+        .progress-bg { background: rgba(0,0,0,0.5); height: 8px; width: 100%; overflow: hidden; margin-bottom: 0px; }
+        .progress-fill { background: linear-gradient(90deg, #5324ab, #7645d9); height: 100%; width: 0%; transition: width 1s linear; }
         
         .price-box {
-            background: #1e1d24;
-            border-radius: 16px;
-            padding: 15px;
-            width: 100%;
-            box-sizing: border-box;
-            text-align: left;
-            border: 1px solid #353547;
-            margin-top: auto;
+            background: rgba(0,0,0,0.3); border-radius: 16px; padding: 15px; width: 100%; box-sizing: border-box;
+            border: 1px solid var(--panel-border); margin-top: auto; font-family: 'Space Mono', monospace;
         }
-        .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
-        .main-price { font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; transition: color 0.3s ease; }
+        .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-family: 'Kanit', sans-serif; font-weight: 800;}
+        .main-price { font-size: 1.6rem; font-weight: bold; margin-bottom: 8px; transition: color 0.3s ease; }
         .main-price.up { color: var(--up); }
         .main-price.down { color: var(--down); }
         .main-price.waiting { color: white; }
-        .price-row { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px; }
-        .price-row span:first-child { color: var(--subtext); font-weight: 600; }
-        .price-row span:last-child { font-weight: bold; }
-
-        .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
         
-        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-        .ledger-item { animation: slideIn 0.4s ease-out forwards; margin-bottom: 8px; background: #353547; padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .confidence-tag { font-size: 0.85rem; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 6px; color: #d1d1d1; }
-        .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 6px; min-height: 1.2em; font-weight: 600; }
+        .price-row { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; }
+        .price-row span:first-child { color: var(--subtext); font-weight: normal; }
+        .price-row span:last-child { font-weight: bold; }
+        
+        .ledger-box { 
+            background: var(--panel); backdrop-filter: blur(12px); padding: 25px; 
+            border-radius: 24px; border: 1px solid var(--panel-border); max-width: 1030px; margin: 0 auto; 
+            box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+        }
+        
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        .ledger-item { 
+            animation: slideIn 0.3s ease-out forwards; margin-bottom: 10px; background: rgba(0,0,0,0.3); 
+            padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; 
+            align-items: center; border-left: 4px solid transparent; font-family: 'Space Mono', monospace;
+        }
+        .ledger-item.win { border-left-color: var(--up); }
+        .ledger-item.loss { border-left-color: var(--down); }
+        .ledger-item.skip { border-left-color: var(--subtext); }
+        
+        .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 8px; min-height: 1.2em; font-family: 'Space Mono', monospace;}
     </style>
 </head>
 <body>
+    <div class="header">
+        <h1>UpsideDownCake</h1>
+        <span>Aperture Predictive Protocol: The Cake is a Lie, The Yield is Real.</span>
+    </div>
+
     <div class="container">
         <div id="tv-container" class="chart-box"></div>
         
@@ -103,22 +161,22 @@
             <div class="card expired">
                 <div class="card-header">
                     <span>Expired</span>
-                    <span id="prev-epoch">#---</span>
+                    <span id="prev-epoch" style="font-family: 'Space Mono', monospace;">#---</span>
                 </div>
                 <div class="card-body">
-                    <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="prev-conf" class="confidence-tag">--%</span></div>
+                    <div class="stat-row"><span>Bot Directive</span></div>
                     <div style="width: 100%;">
                         <div id="prev-bet" class="prediction-badge pred-waiting">---</div>
                         <div id="prev-bet-price" class="bet-price-label"></div>
                     </div>
-                    <div class="stat-row" style="margin-top: 5px;"><span style="font-weight: bold;">Result</span></div>
-                    <div id="prev-result" class="prediction-badge pred-waiting" style="padding: 6px; font-size: 1.1rem;">---</div>
+                    <div class="stat-row" style="margin-top: 5px;"><span>Actual Outcome</span></div>
+                    <div id="prev-result" class="prediction-badge pred-waiting" style="padding: 8px; font-size: 1.2rem;">---</div>
 
                     <div class="price-box">
-                        <div class="price-label">Closed Price</div>
+                        <div class="price-label">Resolution Price</div>
                         <div id="prev-close-price" class="main-price waiting">---</div>
                         <div class="price-row">
-                            <span>Locked Price:</span>
+                            <span>Locked:</span>
                             <span id="prev-lock-price">---</span>
                         </div>
                     </div>
@@ -126,54 +184,54 @@
             </div>
 
             <div class="card live">
-                <div class="progress-bg" style="border-radius: 0; margin: 0; height: 6px;"><div id="progress-bar" class="progress-fill"></div></div>
+                <div class="progress-bg"><div id="progress-bar" class="progress-fill"></div></div>
                 <div class="card-header">
-                    <span>▶ LIVE</span>
-                    <span id="live-epoch">#---</span>
+                    <span>▶ Active Chamber</span>
+                    <span id="live-epoch" style="font-family: 'Space Mono', monospace;">#---</span>
                 </div>
                 <div class="card-body" style="width: 100%; box-sizing: border-box;">
-                    <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="live-conf" class="confidence-tag">--%</span></div>
+                    <div class="stat-row"><span>Bot Directive</span></div>
                     <div style="width: 100%;">
                         <div id="live-bet" class="prediction-badge pred-waiting">---</div>
                         <div id="live-bet-price" class="bet-price-label"></div>
                     </div>
 
                     <div class="price-box">
-                        <div class="price-label">Last Price (Oracle)</div>
+                        <div class="price-label">Realtime Telemetry</div>
                         <div id="live-last-price" class="main-price waiting">---</div>
                         <div class="price-row">
-                            <span>Locked Price:</span>
+                            <span>Locked:</span>
                             <span id="live-lock-price">---</span>
                         </div>
                         <div class="price-row">
-                            <span>Prize Pool:</span>
+                            <span>Pool:</span>
                             <span id="live-prize-pool">---</span>
                         </div>
                     </div>
-                    <div id="time-left" style="text-align: center; font-weight: 800; font-size: 1.2rem; color: var(--primary);">--:--</div>
+                    <div id="time-left" style="text-align: center; font-weight: 800; font-size: 1.5rem; color: var(--primary); font-family: 'Space Mono', monospace;">--:--</div>
                 </div>
             </div>
 
             <div class="card next">
                 <div class="card-header">
-                    <span>▶ Next</span>
-                    <span id="next-epoch">#---</span>
+                    <span>▶ Queued Entry</span>
+                    <span id="next-epoch" style="font-family: 'Space Mono', monospace;">#---</span>
                 </div>
                 <div class="card-body">
-                    <div class="stat-row"><span style="font-weight: bold;">Bot Target</span><span id="next-conf" class="confidence-tag" style="color: var(--primary);">Calculating...</span></div>
+                    <div class="stat-row"><span>Bot Target</span></div>
                     <div style="width: 100%;">
-                        <div id="bot-prediction" class="prediction-badge pred-waiting">Waiting...</div>
+                        <div id="bot-prediction" class="prediction-badge pred-waiting">Processing...</div>
                         <div id="bot-bet-price" class="bet-price-label"></div>
                     </div>
                     
                     <div class="stat-row" style="margin-top: 15px;">
-                        <span style="color: var(--subtext);">Market RSI:</span>
-                        <span id="live-rsi" style="font-weight: bold;">--</span>
+                        <span>System RSI:</span>
+                        <span id="live-rsi" style="color: white; font-family: 'Space Mono', monospace; font-size: 1.1rem;">--</span>
                     </div>
                     
                     <div class="price-box">
                         <div class="price-row" style="margin: 5px 0;">
-                            <span style="font-size: 1.1rem; color: white;">Prize Pool:</span>
+                            <span style="font-size: 1.1rem;">Est. Pool:</span>
                             <span id="next-prize-pool" style="font-size: 1.1rem; color: white;">---</span>
                         </div>
                     </div>
@@ -182,12 +240,13 @@
         </div>
 
         <div class="ledger-box">
-            <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 800;">Bot Execution Ledger</h3>
-            <div id="ledger" style="height: 200px; overflow-y: auto; padding-right: 10px;"></div>
+            <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 800; font-size: 1.4rem;">Execution Log</h3>
+            <div id="ledger" style="height: 220px; overflow-y: auto; padding-right: 10px;"></div>
         </div>
     </div>
 
     <script>
+        // --- 1. INITIALIZATION & CONSTANTS ---
         const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -199,20 +258,18 @@
         ];
         
         const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
-        const CHAINLINK_ABI = [
-            "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
-        ];
+        const CHAINLINK_ABI = ["function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"];
 
         const RPC_URLS = [
-            "https://binance.llamarpc.com",
-            "https://bsc.meowrpc.com",
+            "https://binance.llamarpc.com", 
+            "https://bsc.meowrpc.com", 
             "https://bsc-rpc.publicnode.com"
         ];
         
         let provider, contract, oracleContract, lastEpoch = 0, timerInterval;
         let lastLockedPrice = 0;
 
-        // NOW ACTING AS THE MAIN PRICE FETCHER
+        // --- 2. DATA FETCHERS ---
         async function fetchOraclePrice() {
             if (!oracleContract) return;
             try {
@@ -226,22 +283,17 @@
                         el.className = price >= lastLockedPrice ? 'main-price up' : 'main-price down';
                     }
                 }
-            } catch (error) {
-                console.error("Error fetching Oracle price:", error);
-            }
+            } catch (error) { console.warn("Oracle fetch error", error); }
         }
 
         async function fetchKlines() {
             const PROXY = "https://corsproxy.io/?"; 
-            const URL = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40";
+            const URL = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=50";
             
             try {
                 const res = await fetch(PROXY + encodeURIComponent(URL));
-                if (res.ok) {
-                    return await res.json();
-                } else {
-                    throw new Error("Proxy request failed");
-                }
+                if (res.ok) return await res.json();
+                throw new Error("Proxy request failed");
             } catch (e) {
                 console.warn("Primary proxy failed, trying backup...");
                 const res = await fetch("https://thingproxy.freeboard.io/fetch/" + URL);
@@ -252,80 +304,62 @@
         function getPredictionData(epoch) {
             const raw = localStorage.getItem(`pred_${epoch}`);
             if (!raw) return null;
-            try { return JSON.parse(raw); } catch (e) { return { pred: raw, conf: "N/A" }; }
+            try { return JSON.parse(raw); } catch (e) { return null; }
         }
 
         async function loadLedgerHistory() {
             try {
-                const { data, error } = await supabaseClient
-                    .from('prediction_logs')
-                    .select('*')
-                    .order('epoch_id', { ascending: false })
-                    .limit(20);
-
+                const { data, error } = await supabaseClient.from('prediction_logs').select('*').order('epoch_id', { ascending: false }).limit(20);
                 if (data && data.length > 0) {
                     data.slice().reverse().forEach(log => {
                         renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence || "DB");
                     });
                 }
-            } catch (e) {
-                console.error("Could not load ledger history", e);
-            }
+            } catch (e) { console.error("Could not load ledger history", e); }
         }
 
+        // --- 3. CORE LOOP & SETUP ---
         async function init() {
             new TradingView.widget({ "container_id": "tv-container", "symbol": "BINANCE:BNBUSD", "interval": "5", "theme": "dark", "autosize": true, "studies": ["RSI@tv-basicstudies"] });
-            
             try {
                 const fastest = await findFastestRPC();
                 provider = fastest.provider; 
                 contract = fastest.contract;
-                
                 oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
-                
-                setInterval(fetchOraclePrice, 3000);
+                setInterval(fetchOraclePrice, 3000); 
                 fetchOraclePrice(); 
-                
             } catch (error) { 
-                console.error("Initialization failed, retrying in 10s...");
+                console.error("Init failed, retrying...", error);
                 setTimeout(init, 10000); 
                 return; 
             }
-            
-            await loadLedgerHistory();
+            await loadLedgerHistory(); 
             runLoop();
         }
 
         async function runLoop() {
-            try {
-                await checkRound();
+            try { 
+                await checkRound(); 
                 setTimeout(runLoop, 10000); 
-            } catch (error) {
-                console.warn("Loop error, backing off for 20s:", error);
-                setTimeout(runLoop, 20000);
+            } catch (error) { 
+                console.warn("Loop error:", error);
+                setTimeout(runLoop, 20000); 
             }
         }
 
         async function findFastestRPC() {
-            const nodes = [
-                "https://bsc-rpc.publicnode.com",
-                "https://binance.llamarpc.com",
-                "https://bsc-dataseed.binance.org"
-            ];
-            
-            for (let url of nodes) {
+            for (let url of RPC_URLS) {
                 try {
                     const p = new ethers.providers.JsonRpcProvider(url);
                     const c = new ethers.Contract(PREDICT_ADDR, ABI, p);
                     await c.currentEpoch(); 
                     return { provider: p, contract: c };
-                } catch (e) {
-                    console.warn(`Node ${url} failed, trying next...`);
-                }
+                } catch (e) { console.warn(`Node ${url} failed`); }
             }
-            throw new Error("All RPC nodes failed.");
+            throw new Error("RPC nodes unavailable.");
         }
 
+        // --- 4. UI UPDATE LOGIC ---
         async function checkRound() {
             try {
                 const currentEpoch = (await contract.currentEpoch()).toNumber();
@@ -333,7 +367,6 @@
                 const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
                 const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
 
-                // --- UI HEADER UPDATES ---
                 document.getElementById("next-epoch").innerText = `#${nextEpoch}`;
                 if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
                 if (expiredEpoch > 0) document.getElementById("prev-epoch").innerText = `#${expiredEpoch}`;
@@ -345,76 +378,61 @@
                 
                 if (liveData) {
                     if (liveData.pred === "SKIP") {
-                        const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                        const displayConf = liveData.tryConf || "--%";
-                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
+                        liveBetEl.innerHTML = `SKIP <span class="conf-text" style="font-size:0.75rem;">(Leans ${liveData.try} ${liveData.tryConf})</span>`;
                         liveBetEl.className = "prediction-badge pred-waiting";
                     } else {
-                        liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
+                        liveBetEl.innerHTML = `${liveData.pred} <span class="conf-text">${liveData.conf}</span>`;
                         liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                     }
-                    document.getElementById('live-conf').innerText = (liveData.pred === "SKIP" ? "SKIP" : liveData.conf);
-                    liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
+                    liveBetPriceEl.innerText = liveData.betPrice ? `Locked Ref: $${liveData.betPrice}` : "";
                 }
 
                 if (liveEpoch > 0) {
                     const liveRound = await contract.rounds(liveEpoch);
                     const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
                     const totalPool = parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4);
-                    
                     lastLockedPrice = parseFloat(lockPrice); 
-                    
                     document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
                     document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
-
-                    const closeTimestamp = liveRound.closeTimestamp.toNumber();
-                    startTimer(closeTimestamp);
+                    startTimer(liveRound.closeTimestamp.toNumber());
                 }
 
                 // --- NEXT CARD UPDATE ---
                 const nextRoundData = await contract.rounds(nextEpoch);
                 const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
-                const nextPool = parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4);
-                document.getElementById('next-prize-pool').innerText = `${nextPool} BNB`;
+                document.getElementById('next-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4)} BNB`;
 
-                const now = Math.floor(Date.now() / 1000);
-                const secondsLeft = lockTimestamp - now;
+                const secondsLeft = lockTimestamp - Math.floor(Date.now() / 1000);
                 const nextData = getPredictionData(nextEpoch);
 
                 if (!nextData) {
                     if (secondsLeft > 0 && secondsLeft <= 75) {
                         await generatePrediction(nextEpoch);
                     } else {
-                        document.getElementById('bot-prediction').innerText = "Analyzing...";
+                        document.getElementById('bot-prediction').innerText = "CALCULATING...";
                         document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
-                        document.getElementById('next-conf').innerText = "Waiting for 75s";
                         document.getElementById('bot-bet-price').innerText = "";
                     }
                 } else {
-                    // FIX 3: Correctly map the parameters including tryConf
                     displayPrediction(nextData.pred, nextData.conf, nextData.try, nextData.tryConf, nextData.betPrice);
                 }
 
                 // --- EXPIRED CARD UPDATE ---
-                // FIX 2: Check if expiredEpoch exists BEFORE querying contract or handling its logic
                 if (expiredEpoch > 0) {
                     const expiredRound = await contract.rounds(expiredEpoch);
                     const expiredData = getPredictionData(expiredEpoch);
                     const prevBetEl = document.getElementById("prev-bet");
-                    const prevBetPriceEl = document.getElementById("prev-bet-price"); // FIX 1: Defined Element
+                    const prevBetPriceEl = document.getElementById("prev-bet-price"); 
 
                     if (expiredData) {
                         if (expiredData.pred === 'SKIP') {
-                            const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                            const displayConf = expiredData.tryConf || "--%";
-                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
+                            prevBetEl.innerHTML = `SKIP <span class="conf-text" style="font-size:0.75rem;">(Leaned ${expiredData.try})</span>`;
                             prevBetEl.className = "prediction-badge pred-waiting";
                         } else {
-                            prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
+                            prevBetEl.innerHTML = `${expiredData.pred} <span class="conf-text">${expiredData.conf}</span>`;
                             prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                         }
-                        document.getElementById('prev-conf').innerText = (expiredData.pred === "SKIP" ? "SKIP" : expiredData.conf);
-                        prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
+                        prevBetPriceEl.innerText = expiredData.betPrice ? `Locked Ref: $${expiredData.betPrice}` : "";
                     }
 
                     const prevResultEl = document.getElementById('prev-result');
@@ -425,162 +443,133 @@
                         
                         prevResultEl.innerText = actualResult;
                         prevResultEl.className = `prediction-badge ${actualResult === 'UP' ? 'pred-up' : 'pred-down'}`;
-                        
                         document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
                         const closeEl = document.getElementById('prev-close-price');
                         closeEl.innerText = `$${closePrice.toFixed(4)}`;
                         closeEl.className = `main-price ${actualResult === 'UP' ? 'up' : 'down'}`;
-                        
                     } else {
-                        prevResultEl.innerText = "Resolving..."; 
+                        prevResultEl.innerText = "RESOLVING..."; 
                         prevResultEl.className = "prediction-badge pred-waiting";
                     }
                 }
 
-                if (currentEpoch > lastEpoch && lastEpoch !== 0) {
-                    verifyResult(expiredEpoch); 
-                }
+                if (currentEpoch > lastEpoch && lastEpoch !== 0) verifyResult(expiredEpoch); 
                 lastEpoch = currentEpoch;
                 
             } catch(e) { console.error("CheckRound Error:", e); }
         }
 
+        // --- 5. THE BRAIN LOGIC ---
         async function generatePrediction(targetEpoch) {
             try {
+                // Fetch Oracle Price
                 const predOracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
                 const [, price] = await predOracleContract.latestRoundData();
                 const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8)) - 1; 
                 const currentBetPrice = oraclePrice.toFixed(4); 
 
-                const endpoints = [
-                    "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40",
-                    "https://api1.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40",
-                    "https://corsproxy.io/?" + encodeURIComponent("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40")
-                ];
-
+                // Fetch Klines (Using proxy logic preserved from previous steps)
                 let candles;
-                for (let url of endpoints) {
-                    try {
-                        const res = await fetch(url);
-                        if (res.ok) { candles = await res.json(); break; }
-                    } catch (e) {}
+                try {
+                    const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=50");
+                    candles = await res.json();
+                } catch(e) {
+                    candles = await fetchKlines(); // Fallback
                 }
-                if (!candles) throw new Error("API failed");
                 
                 const closes = candles.map(c => parseFloat(c[4])); 
+                const volumes = candles.map(c => parseFloat(c[5]));
                 const currentClose = closes[closes.length - 1];
+                const currentVolume = volumes[volumes.length - 1];
 
-                // --- 1. CALCULATE RSI (14) ---
+                // MACD Calculation
+                const calcEMA = (data, period) => {
+                    let k = 2 / (period + 1);
+                    let ema = [data[0]];
+                    for (let i = 1; i < data.length; i++) ema.push(data[i] * k + ema[i - 1] * (1 - k));
+                    return ema;
+                };
+                
+                const ema12 = calcEMA(closes, 12);
+                const ema26 = calcEMA(closes, 26);
+                let macdLine = [];
+                for(let i=0; i<closes.length; i++) macdLine.push(ema12[i] - ema26[i]);
+                const signalLine = calcEMA(macdLine, 9);
+                
+                const currentMACD = macdLine[macdLine.length - 1];
+                const currentSignal = signalLine[signalLine.length - 1];
+                const hist = currentMACD - currentSignal;
+                const prevHist = macdLine[macdLine.length - 2] - signalLine[signalLine.length - 2];
+
+                // Volume Spike
+                const volSMA = volumes.slice(-20).reduce((a,b) => a+b, 0) / 20;
+                const isVolumeSpike = currentVolume > (volSMA * 1.5);
+
+                // RSI
                 let gains = 0, losses = 0;
                 for(let i = closes.length - 14; i < closes.length; i++) {
                     const diff = closes[i] - closes[i-1];
                     if (diff > 0) gains += diff; else losses += Math.abs(diff);
                 }
-
-                const avgGain = gains / 14; 
-                const avgLoss = losses / 14;
-
-                let rsi = 100;
-                if (avgLoss !== 0) {
-                    rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
-                } else if (avgGain === 0) {
-                    rsi = 50;
-                }
-
+                const rs = (gains/14) / (losses/14 || 1);
+                const rsi = 100 - (100 / (1 + rs));
                 document.getElementById('live-rsi').innerText = rsi.toFixed(2);
 
-                // --- 2. CALCULATE BOLLINGER BANDS (20, 2) ---
-                const bbPeriod = 20;
-                const bbSlice = closes.slice(-bbPeriod);
-                const sma = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
-                
-                const variance = bbSlice.reduce((acc, val) => acc + Math.pow(val - sma, 2), 0) / bbPeriod;
+                // Bollinger Bands
+                const bbSlice = closes.slice(-20);
+                const sma = bbSlice.reduce((a, b) => a + b, 0) / 20;
+                const variance = bbSlice.reduce((acc, val) => acc + Math.pow(val - sma, 2), 0) / 20;
                 const stdDev = Math.sqrt(variance);
                 const upperBB = sma + (stdDev * 2);
                 const lowerBB = sma - (stdDev * 2);
 
-                // --- 3. CALCULATE EMA (9 & 21) ---
-                const calcEMA = (data, period) => {
-                    const k = 2 / (period + 1);
-                    let ema = data;
-                    for (let i = 1; i < data.length; i++) {
-                        ema = (data[i] * k) + (ema * (1 - k));
-                    }
-                    return ema;
-                };
-                const ema9 = calcEMA(closes.slice(-20), 9);
-                const ema21 = calcEMA(closes.slice(-30), 21);
-
-                // --- 4. THE BRAIN LOGIC ---
-                let upScore = 0;
-                let downScore = 0;
-                let isChoppy = (upperBB - lowerBB) / sma < 0.002;
-
-                if (isChoppy) {
-                    if (currentClose >= upperBB || rsi > 60) downScore += 3;
-                    if (currentClose <= lowerBB || rsi < 40) upScore += 3;
-                    
-                    if (currentClose > sma - (stdDev*0.5) && currentClose < sma + (stdDev*0.5)) {
-                        upScore = 0; downScore = 0; 
-                    }
-                } else {
-                    if (ema9 > ema21) upScore += 2; 
-                    if (ema9 < ema21) downScore += 2; 
-                    
-                    if (rsi > 65) downScore += 1; 
-                    if (rsi < 35) upScore += 1; 
-
-                    if (currentClose > upperBB) downScore += 2; 
-                    if (currentClose < lowerBB) upScore += 2;
-                }
-
-                // --- 5. FINALIZE PREDICTION ---
-                let prediction = "NONE";
-                let winningScore = 0;
-                let tryScore = 0;
-                let tryPred = (rsi < 50 || ema9 > ema21) ? "UP" : "DOWN";
+                // Scoring
+                let upScore = 0, downScore = 0;
                 
-                if (upScore > downScore && upScore >= 2) {
-                    prediction = "UP";
-                    winningScore = upScore;
-                } else if (downScore > upScore && downScore >= 2) {
-                    prediction = "DOWN";
-                    winningScore = downScore;
-                } else {
-                    prediction = "SKIP";
-                    tryScore = (tryPred === "UP") ? upScore : downScore;
-                }
+                if (hist > 0 && hist > prevHist) upScore += 2;
+                if (hist < 0 && hist < prevHist) downScore += 2;
                 
-                let finalConfidence = Math.min(98.5, 50 + (winningScore * 12)).toFixed(1) + "%";
-                let tryConf = Math.min(98.5, 50 + (tryScore * 12)).toFixed(1) + "%";
+                if (isVolumeSpike && currentClose > closes[closes.length-2]) upScore += 1;
+                if (isVolumeSpike && currentClose < closes[closes.length-2]) downScore += 1;
 
-                if (prediction === "SKIP") {
-                    const skipObject = { pred: "SKIP", conf: "Chop / Flat", try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
-                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
-                    displayPrediction("SKIP", "Chop / Flat", tryPred, tryConf, currentBetPrice);
-                } else {
-                    const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
-                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
-                    displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
-                }   
+                if (rsi > 70) downScore += 3;
+                if (rsi < 30) upScore += 3;
+                if (currentClose >= upperBB) downScore += 2;
+                if (currentClose <= lowerBB) upScore += 2;
+
+                let isChoppy = (upperBB - lowerBB) / sma < 0.0015;
+                if (isChoppy) { upScore *= 0.5; downScore *= 0.5; }
+
+                let prediction = "SKIP";
+                let tryPred = (upScore >= downScore) ? "UP" : "DOWN";
+                
+                if (upScore - downScore >= 3) prediction = "UP";
+                else if (downScore - upScore >= 3) prediction = "DOWN";
+                
+                let rawConf = 50 + (Math.max(upScore, downScore) * 8);
+                let finalConf = Math.min(98.5, rawConf).toFixed(1) + "%";
+                let tryConf = Math.min(85, 50 + (Math.abs(upScore - downScore) * 5)).toFixed(1) + "%";
+
+                const predictionObject = { pred: prediction, conf: finalConf, try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
+                localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
+                displayPrediction(prediction, finalConf, tryPred, tryConf, currentBetPrice);
+                
             } catch (e) { console.error("Brain Failed:", e); }
         }
 
-        function displayPrediction(prediction, confidence, tryPred = null, tryConf = null, betPrice = null) {
+        // --- 6. UTILS & LEDGER ---
+        function displayPrediction(prediction, confidence, tryPred, tryConf, betPrice) {
             const predEl = document.getElementById('bot-prediction');
             const betPriceEl = document.getElementById('bot-bet-price');
 
             if (prediction === "SKIP") {
-                const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
-                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
+                predEl.innerHTML = `SKIP <span class="conf-text" style="font-size:0.75rem;">(Leans ${tryPred} ${tryConf})</span>`;
                 predEl.className = "prediction-badge pred-waiting";
             } else {
-                predEl.innerText = `${prediction} (${confidence})`;
+                predEl.innerHTML = `${prediction} <span class="conf-text">${confidence}</span>`;
                 predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
             }
-            
-            document.getElementById('next-conf').innerText = (prediction === "SKIP" ? "SKIP" : confidence);
-            betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
+            betPriceEl.innerText = betPrice ? `Locked Ref: $${betPrice}` : "";
         }
 
         function startTimer(targetTimestamp) {
@@ -589,16 +578,12 @@
             const text = document.getElementById('time-left');
 
             timerInterval = setInterval(() => {
-                const now = Math.floor(Date.now() / 1000);
-                const secondsLeft = targetTimestamp - now;
-                const total = 300; 
-
+                const secondsLeft = targetTimestamp - Math.floor(Date.now() / 1000);
                 if (secondsLeft <= 0) {
                     text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval);
                 } else {
-                    const mins = Math.floor(secondsLeft / 60); const secs = secondsLeft % 60;
-                    text.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                    bar.style.width = `${Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100))}%`;
+                    text.innerText = `${Math.floor(secondsLeft/60)}:${(secondsLeft%60).toString().padStart(2,'0')}`;
+                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
                 }
             }, 1000);
         }
@@ -616,14 +601,7 @@
                 
                 if (botData) {
                     const isWin = (botData.pred === "SKIP") ? "SKIPPED" : ((botData.pred === actualResult) ? "WIN" : "LOSS");
-                    
-                    await supabaseClient.from('prediction_logs').insert([{ 
-                        epoch_id: epochToCheck, 
-                        predicted_side: botData.pred, 
-                        result: isWin,
-                        confidence: botData.conf
-                    }]);
-                    
+                    await supabaseClient.from('prediction_logs').insert([{ epoch_id: epochToCheck, predicted_side: botData.pred, result: isWin, confidence: botData.conf }]);
                     renderLedger(epochToCheck, botData.pred, actualResult, isWin, botData.conf);
                 }
             } catch(e) {}
@@ -631,16 +609,16 @@
 
         function renderLedger(epoch, predicted, actual, result, confidence) {
             const ledger = document.getElementById('ledger');
-            
-            let resultColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "#a1a1a1");
-            let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "#a1a1a1");
+            let badgeClass = result === "WIN" ? "win" : (result === "LOSS" ? "loss" : "skip");
+            let resultColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "var(--subtext)");
+            let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "var(--subtext)");
             
             if (ledger.innerHTML.includes(`Epoch #${epoch}`)) return;
 
             ledger.innerHTML = `
-            <div class="ledger-item">
-                <div><strong>Epoch #${epoch}</strong> <span class="confidence-tag" style="margin-left: 10px;">${confidence} Conf.</span></div>
-                <div>Bot: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; Result: <span style="color: ${resultColor}; font-weight: 800;">${result}</span></div>
+            <div class="ledger-item ${badgeClass}">
+                <div><span style="font-weight: bold; color: white;">Epoch #${epoch}</span> <span class="conf-text" style="margin-left: 10px;">${confidence}</span></div>
+                <div>Directive: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;|&nbsp; Status: <span style="color: ${resultColor}; font-weight: bold;">${result}</span></div>
             </div>` + ledger.innerHTML;
         }
 
