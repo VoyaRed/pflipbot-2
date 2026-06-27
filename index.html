@@ -624,7 +624,7 @@
                 .from('market_stats')
                 .select('rsi, macd')
                 .eq('id', 1)
-                .single();
+                .maybeSingle()
 
             if (statsData) {
                 // Target the specific IDs from your HTML
@@ -638,7 +638,7 @@
                 .select('epoch_id, predicted_side, confidence')
                 .order('epoch_id', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle()
 
             if (predData) {
                 // Update the Epoch Number
