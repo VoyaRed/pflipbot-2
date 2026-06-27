@@ -569,21 +569,6 @@
                     tryScore = (tryPred === "UP") ? upScore : downScore;
                 }
                 
-                let finalConfidence = Math.min(98.5, 50 + (winningScore * 12)).toFixed(1) + "%";
-                let tryConf = Math.min(98.5, 50 + (tryScore * 12)).toFixed(1) + "%";
-                
-                if (prediction === "SKIP") {
-                    const skipObject = { pred: "SKIP", conf: "Chop / Flat", try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
-                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
-                    displayPrediction("SKIP", "Chop / Flat", tryPred, tryConf, currentBetPrice);
-                } else {
-                    const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
-                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
-                    displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
-                }
-                    } catch (e) { console.error("Brain Failed:", e); }
-                }
-
                 // Deterministic calculation: Start at 50%, add 12% per point of conviction
                 // Cap at 98.5%
                 let finalConfidence = Math.min(98.5, 50 + (winningScore * 12)).toFixed(1) + "%";
@@ -598,7 +583,7 @@
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
                     displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
                     }   
-            } catch (e) { console.error("Brain Failed:", e); }     
+            } catch (e) { console.error("Brain Failed:", e); }
         }
 
         function displayPrediction(prediction, confidence, tryPred = null, tryConf = null, betPrice = null) {
