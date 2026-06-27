@@ -365,6 +365,10 @@
         const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
         const CHAINLINK_ABI = ["function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"];
 
+        const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
         let provider, contract, oracleContract, timerInterval;
         let lastLockedPrice = 0;
         let notifiedEpochs = new Set();
@@ -413,19 +417,6 @@
                 }
             } catch (error) {}
         }
-
-        async function updateMarketStats(rsi, macd, price) {
-    const { error } = await supabaseClient
-        .from('market_stats')
-        .upsert([{ 
-            id: 1, 
-            rsi: rsi, 
-            macd: macd, 
-         //   price: price,
-            updated_at: new Date().toISOString() 
-        }]);
-    if (error) console.error("Error updating stats:", error);
-}
 
         async function updateMarketVisualsFromDB() {
             const { data, error } = await supabaseClient
@@ -622,63 +613,5 @@
         window.onload = init;
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
-    // 1. Initialize Supabase
-    const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // 2. Fetch and update the dashboard
-    async function updateDashboard() {
-        try {
-            
-
-            // --- FETCH LATEST PREDICTION ---
-            const { data: predData, error: predError } = await supabaseClient
-                .from('prediction_logs')
-                .select('epoch_id, predicted_side, confidence')
-                .order('epoch_id', { ascending: false })
-                .limit(1)
-                .maybeSingle()
-
-            if (predData) {
-                // Update the Epoch Number
-                document.getElementById('next-epoch').innerText = `#${predData.epoch_id}`;
-                
-                // Update the Confidence text
-                document.getElementById('next-conf').innerText = predData.confidence || 'Analyzed';
-                
-                // Update the Prediction Badge Text
-                const badge = document.getElementById('bot-prediction');
-                badge.innerText = predData.predicted_side;
-                
-                // Strip the default 'pred-waiting' class so we can apply custom colors
-                badge.className = 'prediction-badge'; 
-                
-                // Apply dynamic colors based on the market direction
-                if (predData.predicted_side === 'UP') {
-                    badge.style.backgroundColor = '#32d993'; // Bullish Green
-                    badge.style.color = '#1a1a1a'; // Dark text for contrast
-                } else if (predData.predicted_side === 'DOWN') {
-                    badge.style.backgroundColor = '#ff5353'; // Bearish Red
-                    badge.style.color = '#ffffff'; 
-                } else {
-                    badge.style.backgroundColor = '#4a4a4a'; // Chop/Skip Grey
-                    badge.style.color = '#ffffff';
-                }
-            }
-
-        } catch (err) {
-            console.error("Dashboard update failed:", err);
-        }
-    }
-
-    // 3. Run immediately on load
-    updateDashboard();
-
-    // 4. Refresh the data every 5 seconds
-    setInterval(updateDashboard, 5000);
-</script>
 </body>
 </html>
