@@ -218,7 +218,7 @@
             try {
                 const data = await oracleContract.latestRoundData();
                 // Subtracted 1 here as requested
-                const price = (data.answer / 1e8) - 1; 
+                const price = (data.answer / 1e8); 
                 
                 const el = document.getElementById('live-last-price');
                 if (el) {
