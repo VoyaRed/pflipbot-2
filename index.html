@@ -557,7 +557,47 @@
                     </div>
                 `;
             }
+            // --- 5. RENDER THE LEDGER ROWS ---
+        logs.forEach(log => {
+            renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence);
+        });
+
+        // --- 6. UPDATE THE INDIVIDUAL CARDS ---
+        const nextLog = logs.find(l => l.epoch_id === nextEpoch);
+        const liveLog = logs.find(l => l.epoch_id === liveEpoch);
+        const prevLog = logs.find(l => l.epoch_id === prevEpoch);
+
+        // Update Next Card
+        if (nextLog) {
+            const predEl = document.getElementById('bot-prediction');
+            predEl.innerText = nextLog.predicted_side;
+            predEl.className = `prediction-badge pred-${nextLog.predicted_side.toLowerCase() === 'skip' ? 'waiting' : nextLog.predicted_side.toLowerCase()}`;
+            document.getElementById('next-conf').innerText = nextLog.confidence;
         }
+
+        // Update Live Card
+        if (liveLog) {
+            const betEl = document.getElementById('live-bet');
+            betEl.innerText = liveLog.predicted_side;
+            betEl.className = `prediction-badge pred-${liveLog.predicted_side.toLowerCase() === 'skip' ? 'waiting' : liveLog.predicted_side.toLowerCase()}`;
+            document.getElementById('live-conf').innerText = liveLog.confidence;
+        }
+
+        // Update Expired Card
+        if (prevLog) {
+            const betEl = document.getElementById('prev-bet');
+            betEl.innerText = prevLog.predicted_side;
+            betEl.className = `prediction-badge pred-${prevLog.predicted_side.toLowerCase() === 'skip' ? 'waiting' : prevLog.predicted_side.toLowerCase()}`;
+            document.getElementById('prev-conf').innerText = prevLog.confidence;
+            
+            const resEl = document.getElementById('prev-result');
+            resEl.innerText = prevLog.result;
+            // Simple color coding for the result badge
+            if(prevLog.result === 'WIN') resEl.className = 'prediction-badge pred-up';
+            else if (prevLog.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
+            else resEl.className = 'prediction-badge pred-waiting';
+        }
+    }
         
         function renderLedgerRow(epoch, predicted, result, confidence) {
             const ledger = document.getElementById('ledger');
