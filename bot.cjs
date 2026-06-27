@@ -117,7 +117,6 @@ async function generatePrediction(targetEpoch) {
         const candles = await res.json();
 
         // 2. Fetch with Retry Logic (Try 3 times)
-        let candles = null;
         for (let i = 0; i < 3; i++) {
             try {
                 const res = await fetch(url, options);
