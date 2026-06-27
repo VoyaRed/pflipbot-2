@@ -7,7 +7,6 @@ const fetch = require('node-fetch');
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
 const ABI = [
     "function currentEpoch() view returns (uint256)", 
@@ -17,7 +16,7 @@ const ABI = [
 // --- STATE VARIABLES ---
 let provider, contract;
 let lastEpochChecked = 0;
-let memoryStore = {}; 
+let memoryStore = {};
 
 async function findFastestRPC() {
     const nodes = [
@@ -70,7 +69,7 @@ async function checkRound() {
     const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
-
+    
     if (!memoryStore[`pred_${nextEpoch}`] && secondsLeft > 0 && secondsLeft <= 75) {
         console.log(`\n⏳ Epoch #${nextEpoch} is closing in ${secondsLeft}s. Analyzing market...`);
         await generatePrediction(nextEpoch);
@@ -82,10 +81,9 @@ async function checkRound() {
             .from('prediction_logs')
             .select('epoch_id')
             .eq('result', 'PENDING');
-
+            
         if (pendingLogs && pendingLogs.length > 0) {
             for (let log of pendingLogs) {
-                // An epoch is only considered expired if it is at least 2 behind the current one
                 if (log.epoch_id <= currentEpoch - 2) {
                     await verifyResult(log.epoch_id);
                 }
@@ -96,7 +94,7 @@ async function checkRound() {
     }
 }
 
-async function updateMarketStats(rsi, macd, price) {
+async function updateMarketStats(rsi, macd, price, laterPred = "NONE", laterConf = "0%") {
     const { error } = await supabaseClient
         .from('market_stats')
         .upsert([{ 
@@ -104,6 +102,8 @@ async function updateMarketStats(rsi, macd, price) {
             rsi: rsi, 
             macd: macd, 
             price: price,
+            later_pred: laterPred,
+            later_conf: laterConf,
             updated_at: new Date().toISOString() 
         }]);
     if (error) console.error("Error updating stats:", error);
@@ -111,52 +111,43 @@ async function updateMarketStats(rsi, macd, price) {
 
 async function generatePrediction(targetEpoch) {
     try {
-        // 1. Access the variable you set in Render
         const apiKey = process.env.SCRAPINGBEE_KEY;
-        
-        // 2. Safety check: Ensure the key actually exists
         if (!apiKey) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
-            return; // Stop the function if we don't have a key
+            return; 
         }
         
         const targetUrl = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
-        // Dynamically inject the API key here
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}`;
-        
         const options = {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'application/json'
             }
         };
-
-        // Use let instead of const so the retry loop can reassign it
+        
         let candles = null;
-
-        // 3. Fetch with Retry Logic (Try 3 times)
         for (let i = 0; i < 3; i++) {
             try {
                 const res = await fetch(scrapingBeeUrl, options);
                 if (res.ok) {
                     candles = await res.json();
-                    break; // Success! Break out of the retry loop
+                    break;
                 } else {
                     console.log(`ScrapingBee attempt ${i+1} failed with status: ${res.status}`);
                 }
             } catch (e) {
                 console.log(`ScrapingBee attempt ${i+1} caught error: ${e.message}`);
             }
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
         if (!candles) throw new Error("ScrapingBee API failed after 3 retries");
 
-        // --- REST OF YOUR EXISTING LOGIC ---
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
-
+        
         // RSI
         let gains = 0, losses = 0;
         for(let i = closes.length - 14; i < closes.length; i++) {
@@ -177,15 +168,15 @@ async function generatePrediction(targetEpoch) {
         const stdDev = Math.sqrt(variance);
         const upperBB = sma + (stdDev * 2);
         const lowerBB = sma - (stdDev * 2);
-
-       // EMA Helper Function (FIXED)
+        
+        // EMA Helper
         const calculateEMAArray = (data, period) => {
-        const k = 2 / (period + 1);
-        let emaArray = [data[0]]; // ✅ Uses the first value, preventing NaN chains
-        for (let i = 1; i < data.length; i++) {
-            emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
-        }
-        return emaArray;
+            const k = 2 / (period + 1);
+            let emaArray = [data]; 
+            for (let i = 1; i < data.length; i++) {
+                emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
+            }
+            return emaArray;
         };
         
         // EMA & MACD
@@ -199,17 +190,39 @@ async function generatePrediction(targetEpoch) {
         const currentSignal = signalLineArray[signalLineArray.length - 1];
         const currentHist = currentMACD - currentSignal;
         const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
-
+        
         // Volume
         const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
         const currentVol = volumes[volumes.length - 1];
         const hasVolumeSpike = currentVol > (volSMA20 * 1.5);
+        
+        // --- NEW: FETCH HISTORICAL EPOCH DATA FOR MICRO-TREND ---
+        let recentUps = 0, recentDowns = 0;
+        const roundPromises = [];
+        for(let i=1; i<=5; i++) {
+            roundPromises.push(contract.rounds(targetEpoch - i).catch(() => null));
+        }
+        const pastRounds = await Promise.all(roundPromises);
+        pastRounds.forEach(r => {
+            if (r && r.oracleCalled) {
+                const lp = parseFloat(ethers.utils.formatUnits(r.lockPrice, 8));
+                const cp = parseFloat(ethers.utils.formatUnits(r.closePrice, 8));
+                if (cp > lp) recentUps++;
+                else if (cp < lp) recentDowns++;
+            }
+        });
 
         // Scoring Logic
         let upScore = 0, downScore = 0;
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
-        
+
+        // Apply Historical Micro-trend weight
+        if (recentUps >= 3) upScore += 1;
+        if (recentUps === 5) upScore += 1.5; // Strong sustained trend
+        if (recentDowns >= 3) downScore += 1;
+        if (recentDowns === 5) downScore += 1.5;
+
         if (isChoppy) {
             if (hasVolumeSpike) {
                 if (currentClose >= upperBB || rsi > 65) downScore += 4;
@@ -224,7 +237,6 @@ async function generatePrediction(targetEpoch) {
             if (currentClose < lowerBB) upScore += 2;
             if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2;
             if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
-            
             if (hasVolumeSpike) {
                 const opens = parseFloat(candles[candles.length - 1][1]);
                 if (currentClose > opens) upScore += 1; 
@@ -237,7 +249,7 @@ async function generatePrediction(targetEpoch) {
         let tryPred = (currentMACD > currentSignal || rsi < 45) ? "UP" : "DOWN";
         
         if (upScore > downScore && upScore >= 4) { 
-            prediction = "UP"; 
+            prediction = "UP";
             winningScore = upScore;
         } else if (downScore > upScore && downScore >= 4) { 
             prediction = "DOWN";
@@ -251,10 +263,20 @@ async function generatePrediction(targetEpoch) {
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
         let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
+        // --- NEW: CALCULATE "LATER" LIKELIHOOD ---
+        // Uses EMA distance, RSI divergence, and recent blockchain trend
+        let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
+        laterUpProb = Math.max(10, Math.min(90, laterUpProb)); // Clamp between 10% and 90%
+        let laterDownProb = 100 - laterUpProb;
+        
+        let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
+        let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
+
         memoryStore[`pred_${targetEpoch}`] = { pred: prediction, conf: displayConf };
         console.log(`🤖 [Epoch ${targetEpoch}] Decision: ${prediction} (Conf: ${displayConf})`);
+        console.log(`🔮 [Later Epoch Likelihood]: ${laterPrediction} ${laterMajorityProb}%`);
 
-        // Insert into original Supabase Database immediately
+        // Insert into Supabase
         const { error } = await supabaseClient.from('prediction_logs').insert([{ 
             epoch_id: targetEpoch, 
             predicted_side: prediction, 
@@ -263,8 +285,8 @@ async function generatePrediction(targetEpoch) {
         }]);
         if (error) console.error("❌ Early Supabase insert error:", error);
 
-        await updateMarketStats(rsi, currentMACD, currentClose);
-
+        // Update visual stats including the new LATER values
+        await updateMarketStats(rsi, currentMACD, currentClose, laterPrediction, laterMajorityProb);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
@@ -279,25 +301,20 @@ async function verifyResult(epochToCheck) {
         const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
         const actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
         
-        const { data } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single(); 
+        const { data } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single();
         if (data) { 
             let resultStatus;
             if (data.predicted_side === "SKIP") {
-                resultStatus = "SKIP/" + actualResult; 
+                resultStatus = "SKIP/" + actualResult;
             } else {
                 resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
             }
 
-            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`); 
-            
+            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
             await supabaseClient.from('prediction_logs')
-                .update({ 
-                    result: resultStatus,
-                    close_price: closePrice // Ensure you have a 'close_price' column in your DB table
-                })
+                .update({ result: resultStatus, close_price: closePrice })
                 .eq('epoch_id', epochToCheck);
 
-            // --- Calculate Both Running Win Rates in Terminal ---
             const { data: recentLogs } = await supabaseClient
                 .from('prediction_logs')
                 .select('result, confidence')
@@ -305,12 +322,10 @@ async function verifyResult(epochToCheck) {
                 .order('epoch_id', { ascending: false });
 
             if (recentLogs && recentLogs.length > 0) {
-                // Calculate Mixed Market (Last 15 logs overall)
                 const mixedSlice = recentLogs.slice(0, 15);
                 const mixedWins = mixedSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
                 const mixedRate = ((mixedWins / mixedSlice.length) * 100).toFixed(1);
-
-                // Calculate Trend Market (Last 15 logs with confidence strictly > 50%)
+                
                 const trendSlice = recentLogs.filter(l => {
                     const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
                     return match ? parseFloat(match[1]) > 50.0 : true;
@@ -322,13 +337,11 @@ async function verifyResult(epochToCheck) {
                 console.log(`📈 Mixed Market (incl. 50% Chops - Last 15): ${mixedRate}%`);
                 console.log(`🚀 Trend Market (>50% - Last 15): ${trendRate}%`);
             }
-            // ---------------------------------------------------
         }
     } catch(e) { console.error("Result Verification Failed:", e); }
 }
 
 startBot();
 
-// Keep-Alive for Render
 const http = require('http');
 http.createServer((req, res) => { res.writeHead(200); res.end('Bot running'); }).listen(process.env.PORT || 3000);
