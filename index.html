@@ -363,22 +363,19 @@
                 const liveBetEl = document.getElementById('live-bet');
                 const liveBetPriceEl = document.getElementById('live-bet-price');
 
-                if (liveData) {
-                    if (liveData.pred === "SKIP") {
-                        const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try}</span>)</span>`;
-                        liveBetEl.className = "prediction-badge pred-waiting";
-                    } else {
-                        liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
-                        liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
-                        }
-                    document.getElementById('live-conf').innerText = liveData.conf;
-                    liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
+        if (liveData) {
+                if (liveData.pred === "SKIP") {
+                const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
+                const displayConf = liveData.tryConf || "--%";
+                liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
+                liveBetEl.className = "prediction-badge pred-waiting";
                 } else {
-                    liveBetEl.innerText = "No Bet"; liveBetEl.className = "prediction-badge pred-waiting";
-                    document.getElementById('live-conf').innerText = "--%";
-                    liveBetPriceEl.innerText = "";
-                }
+                    liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
+                    liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
+                    }
+                document.getElementById('live-conf').innerText = (liveData.pred === "SKIP" ? "SKIP" : liveData.conf);
+                liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
+}
 
                 if (liveEpoch > 0) {
                     const liveRound = await contract.rounds(liveEpoch);
@@ -418,25 +415,19 @@
                 }
 
                 // --- EXPIRED CARD UPDATE ---
-                if (expiredEpoch > 0) {
-                    const expiredRound = await contract.rounds(expiredEpoch);
-                    const expiredData = getPredictionData(expiredEpoch);
-                    
-                    const prevBetEl = document.getElementById('prev-bet');
-                    const prevBetPriceEl = document.getElementById('prev-bet-price');
-
-                    if (expiredData) {
-                        if (expiredData.pred === 'SKIP') {
-                            const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try}</span>)</span>`;
-                            prevBetEl.className = "prediction-badge pred-waiting";
-                        } else {
-                            prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
-                            prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
-                            }
-                        document.getElementById('prev-conf').innerText = expiredData.conf;
-                        prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
-                    }
+                if (expiredData) {
+                    if (expiredData.pred === 'SKIP') {
+                    const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
+                    const displayConf = expiredData.tryConf || "--%";
+                    prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
+                    prevBetEl.className = "prediction-badge pred-waiting";
+                    } else {
+                        prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
+                        prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
+                        }
+                document.getElementById('prev-conf').innerText = (expiredData.pred === "SKIP" ? "SKIP" : expiredData.conf);
+                prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
+                }
 
                     const prevResultEl = document.getElementById('prev-result');
                     if (expiredRound.oracleCalled) {
