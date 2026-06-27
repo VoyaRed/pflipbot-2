@@ -253,7 +253,6 @@ async function generatePrediction(targetEpoch) {
 
     } catch (e) {
         console.error("Brain Failed:", e); }
-    }
 }
 
 async function verifyResult(epochToCheck) {
