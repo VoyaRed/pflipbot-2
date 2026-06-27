@@ -585,10 +585,11 @@
 
             logs.forEach(log => renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence));
 
-            const nextLog = logs.find(l => l.epoch_id === nextEpoch);
-            const liveLog = logs.find(l => l.epoch_id === liveEpoch);
-            const prevLog = logs.find(l => l.epoch_id === prevEpoch);
-            const oldPrevLog = logs.find(l => l.epoch_id === oldPrevEpoch);
+            const nextLog = logs.find(l => l.epoch_id == nextEpoch);
+            const liveLog = logs.find(l => l.epoch_id == liveEpoch);
+            const prevLog = logs.find(l => l.epoch_id == prevEpoch);
+            const oldPrevLog = logs.find(l => l.epoch_id == oldPrevEpoch);
+
 
             // --- ANIMATION TRIGGERS ---
             if (prevLog && prevLog.result && officialStatuses.includes(prevLog.result)) {
