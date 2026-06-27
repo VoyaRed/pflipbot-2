@@ -302,13 +302,10 @@ async function verifyResult(epochToCheck) {
 // Kick off the engine
 startBot();
 
-// --- RENDER FREE TIER KEEP-ALIVE ---
+// --- RENDER WEB SERVICE KEEP-ALIVE ---
 const http = require('http');
 const port = process.env.PORT || 3000;
-
 http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.writeHead(200);
     res.end('Bot is running');
-}).listen(port, () => {
-    console.log(`✅ Web Service listening on port ${port}`);
-});
+}).listen(port);
