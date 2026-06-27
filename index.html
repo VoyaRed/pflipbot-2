@@ -419,49 +419,29 @@
             } catch (error) {}
         }
 
-        async function updateMarketVisuals() {
-            // Frontend calculates its own RSI/MACD via proxy for the UI
-            const endpoints = [
-                "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
-                "https://corsproxy.io/?" + encodeURIComponent("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100")
-            ];
-
-            let candles;
-            for (let url of endpoints) {
-                try {
-                    const res = await fetch(url);
-                    if (res.ok) { candles = await res.json(); break; }
-                } catch (e) {}
+        async function updateMarketVisualsFromDB() {
+            const { data, error } = await supabaseClient
+                .from('market_stats')
+                .select('*')
+                .eq('id', 1)
+                .single();
+        
+            if (data && !error) {
+                // Update RSI
+                const rsiEl = document.getElementById('live-rsi');
+                if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
+        
+                // Update MACD
+                const macdEl = document.getElementById('live-macd');
+                if (macdEl) {
+                    let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)";
+                    macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
+                }
+                
+                // Update Price (if needed)
+                const priceEl = document.getElementById('live-last-price');
+                if (priceEl) priceEl.innerText = '$' + data.price.toFixed(4);
             }
-            if (!candles) return;
-
-            const closes = candles.map(c => parseFloat(c[4]));
-            
-            // Calc RSI
-            let gains = 0, losses = 0;
-            for(let i = closes.length - 14; i < closes.length; i++) {
-                const diff = closes[i] - closes[i-1];
-                if (diff > 0) gains += diff; else losses += Math.abs(diff);
-            }
-            const avgGain = gains / 14; const avgLoss = losses / 14;
-            let rsi = 100;
-            if (avgLoss !== 0) { rsi = 100 - (100 / (1 + (avgGain / avgLoss))); }
-            document.getElementById('live-rsi').innerText = rsi.toFixed(2);
-
-            // Calc MACD
-            const calculateEMAArray = (data, period) => {
-                const k = 2 / (period + 1); let emaArray = [data[0]];
-                for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
-                return emaArray;
-            };
-            const ema12Array = calculateEMAArray(closes, 12);
-            const ema26Array = calculateEMAArray(closes, 26);
-            const macdLineArray = ema12Array.map((v, i) => v - ema26Array[i]);
-            const signalLineArray = calculateEMAArray(macdLineArray, 9);
-            const currentHist = macdLineArray[macdLineArray.length - 1] - signalLineArray[signalLineArray.length - 1];
-            
-            let macdColor = currentHist >= 0 ? "var(--up)" : "var(--down)";
-            document.getElementById('live-macd').innerHTML = `<span style="color: ${macdColor}">${currentHist.toFixed(3)}</span>`;
         }
 
         async function runSyncLoop() {
@@ -502,7 +482,7 @@
                 }
 
                 // 2. Refresh Visual Indicators
-                await updateMarketVisuals();
+                await updateMarketVisualsFromDB();
 
                 // 3. Sync with Bot Mind (Supabase)
                 const { data } = await supabaseClient.from('prediction_logs')
