@@ -321,7 +321,7 @@
 
         <div class="ledger-box">
             <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 800; color: var(--primary);">UpsideDownCake Execution Ledger 🍰</h3>
-            <div id="ledger" style="height: 200px; overflow-y: auto; padding-right: 10px;"></div>
+            <div id="ledger" style="height: 300px; overflow-y: auto; padding-right: 10px;"></div>
         </div>
     </div>
 
@@ -423,13 +423,15 @@
 
         async function loadLedgerHistory() {
             try {
+                // MODIFICATION: Pulling the last 288 rounds (24 hours at 5 min per round)
                 const { data, error } = await supabaseClient
                     .from('prediction_logs')
                     .select('*')
                     .order('epoch_id', { ascending: false })
-                    .limit(20);
+                    .limit(288); // 24 hours of logs
 
                 if (data && data.length > 0) {
+                    // Reverse to get chronological order from bottom up in the UI
                     data.slice().reverse().forEach(log => {
                         renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence || "DB");
                     });
