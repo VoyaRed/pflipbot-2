@@ -110,19 +110,29 @@ async function generatePrediction(targetEpoch) {
         const currentBetPrice = oraclePrice.toFixed(4); 
 
         // 2. Fetch Klines (Removed CORS proxies, hitting Binance directly)
+        // Use a proxy to avoid IP blocking
         const endpoints = [
-            "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
-            "https://api1.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100"
+            "https://corsproxy.io/?https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
+            "https://thingproxy.freeboard.io/fetch/https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
         ];
-
+        
         let candles;
         for (let url of endpoints) {
             try {
-                const res = await fetch(url);
-                if (res.ok) { candles = await res.json(); break; }
-            } catch (e) {}
+                // Add User-Agent so we look like a browser
+                const res = await fetch(url, {
+                    headers: { "User-Agent": "Mozilla/5.0" },
+                });
+                if (res.ok) {
+                    candles = await res.json();
+                    break;
+                }
+            } catch (e) {
+                console.warn("Proxy attempt failed");
+            }
         }
         if (!candles) throw new Error("Binance API failed");
+
         
         const closes = candles.map(c => parseFloat(c[4])); 
         const volumes = candles.map(c => parseFloat(c[5])); 
