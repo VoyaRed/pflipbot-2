@@ -319,46 +319,65 @@ async function verifyResult(epochToCheck) {
         const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
         const actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
         
-        const { data } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single();
-        if (data) { 
-            let resultStatus;
-            if (data.predicted_side === "SKIP") {
-                resultStatus = "SKIP/" + actualResult;
-            } else {
-                resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
-            }
+        // Added error tracking to the fetch
+        const { data, error: fetchError } = await supabaseClient
+            .from('prediction_logs')
+            .select('*')
+            .eq('epoch_id', epochToCheck)
+            .single();
+            
+        if (fetchError || !data) return;
 
-            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
-            await supabaseClient.from('prediction_logs')
-                .update({ result: resultStatus, close_price: closePrice })
-                .eq('epoch_id', epochToCheck);
+        // Skip if this record somehow already got resolved
+        if (data.result !== 'PENDING') return;
 
-            const { data: recentLogs } = await supabaseClient
-                .from('prediction_logs')
-                .select('result, confidence')
-                .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
-                .order('epoch_id', { ascending: false });
-
-            if (recentLogs && recentLogs.length > 0) {
-                const mixedSlice = recentLogs.slice(0, 15);
-                const mixedWins = mixedSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-                const mixedRate = ((mixedWins / mixedSlice.length) * 100).toFixed(1);
-                
-                const trendSlice = recentLogs.filter(l => {
-                    const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
-                    return match ? parseFloat(match[1]) > 50.0 : true;
-                }).slice(0, 15);
-                
-                const trendWins = trendSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-                const trendRate = trendSlice.length > 0 ? ((trendWins / trendSlice.length) * 100).toFixed(1) : "0.0";
-
-                console.log(`📈 Mixed Market (incl. 50% Chops - Last 15): ${mixedRate}%`);
-                console.log(`🚀 Trend Market (>50% - Last 15): ${trendRate}%`);
-            }
+        let resultStatus;
+        if (data.predicted_side === "SKIP") {
+            resultStatus = "SKIP/" + actualResult;
+        } else {
+            resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
         }
-    } catch(e) { console.error("Result Verification Failed:", e); }
-}
 
+        console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
+        
+        // CRITICAL FIX: Removed 'close_price' so Supabase doesn't reject the update
+        const { error: updateError } = await supabaseClient
+            .from('prediction_logs')
+            .update({ result: resultStatus })
+            .eq('epoch_id', epochToCheck);
+
+        if (updateError) {
+            console.error(`❌ Supabase Update Error for Epoch ${epochToCheck}:`, updateError.message);
+            return;
+        }
+
+        // Improved: Added .limit(15) directly to the database query for efficiency
+        const { data: recentLogs } = await supabaseClient
+            .from('prediction_logs')
+            .select('result, confidence')
+            .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
+            .order('epoch_id', { ascending: false })
+            .limit(15);
+
+        if (recentLogs && recentLogs.length > 0) {
+            const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+            const mixedRate = ((mixedWins / recentLogs.length) * 100).toFixed(1);
+            
+            const trendSlice = recentLogs.filter(l => {
+                const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
+                return match ? parseFloat(match[1]) > 50.0 : true;
+            });
+            
+            const trendWins = trendSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+            const trendRate = trendSlice.length > 0 ? ((trendWins / trendSlice.length) * 100).toFixed(1) : "0.0";
+
+            console.log(`📈 Mixed Market (incl. 50% Chops - Last 15): ${mixedRate}%`);
+            console.log(`🚀 Trend Market (>50% - Last 15): ${trendRate}%`);
+        }
+    } catch(e) { 
+        console.error("Result Verification Failed:", e); 
+    }
+}
 startBot();
 
 const http = require('http');
