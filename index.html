@@ -206,7 +206,7 @@
 
 // Setup Ethers Provider (Public BSC RPC)
 const provider = new ethers.providers.JsonRpcProvider("https://bsc-dataseed.binance.org/");
-const oracleContract = new ethers.Contract(CHAINLINK_ORACLE_ADDRESS, CHAINLINK_ABI, provider);
+const oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
 
 async function fetchOraclePrice() {
     if (!oracleContract) return;
@@ -472,7 +472,7 @@ async function runLoop() {
 
         async function generatePrediction(targetEpoch) {
             try {
-                const oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, ABI_CHAINLINK, provider);
+                const oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
                 const [, price] = await oracleContract.latestRoundData();
                 const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8));
                 const currentBetPrice = oraclePrice.toFixed(4); 
