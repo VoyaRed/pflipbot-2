@@ -167,10 +167,10 @@ async function generatePrediction(targetEpoch) {
         const upperBB = sma + (stdDev * 2);
         const lowerBB = sma - (stdDev * 2);
 
-        // EMA Helper
+       // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data];
+            let emaArray = [data]; // 👈 CHANGE THIS LINE (Add the)
             for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             return emaArray;
         };
@@ -186,8 +186,6 @@ async function generatePrediction(targetEpoch) {
         const currentSignal = signalLineArray[signalLineArray.length - 1];
         const currentHist = currentMACD - currentSignal;
         const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
-
-        await updateMarketStats(rsi, currentMACD, currentClose);
 
         // Volume
         const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
