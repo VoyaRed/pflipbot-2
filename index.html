@@ -213,7 +213,7 @@ async function fetchOraclePrice() {
     try {
         const data = await oracleContract.latestRoundData();
         // Divide by 10^8 to get decimals, then subtract 1
-        const price = (data.answer / 1e8) - 1; 
+        const price = (data.answer); 
         
         const el = document.getElementById('live-last-price');
         if (el) {
@@ -242,7 +242,7 @@ fetchOraclePrice(); // Initial call
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         // Parse the float from Binance and subtract 1
-        const livePrice = parseFloat(data.c) - 1; 
+        const livePrice = parseFloat(data.c); 
         
         const el = document.getElementById('live-last-price');
         if (el && lastLockedPrice > 0) {
