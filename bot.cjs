@@ -279,10 +279,12 @@ async function verifyResult(epochToCheck) {
 
             console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`); 
             
-            // Update Database 
             await supabaseClient.from('prediction_logs')
-                .update({ result: resultStatus })
-                .eq('epoch_id', epochToCheck); 
+                .update({ 
+                    result: resultStatus,
+                    close_price: closePrice // Ensure you have a 'close_price' column in your DB table
+                })
+                .eq('epoch_id', epochToCheck);
 
             // --- Calculate Both Running Win Rates in Terminal ---
             const { data: recentLogs } = await supabaseClient
