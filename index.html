@@ -533,10 +533,6 @@
                     // Render the dashboard with our newly enriched data
                     renderDashboardFromDB(data, currentEpoch, liveEpoch, prevEpoch);
                 }
-            } catch (error) { 
-                console.warn("Sync Error:", error); 
-            } // <-- This is the missing catch block!
-            
             setTimeout(runSyncLoop, 10000); 
         }
 
