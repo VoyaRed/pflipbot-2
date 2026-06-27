@@ -227,7 +227,7 @@ async function generatePrediction(targetEpoch) {
         if (recentUps >= 3) upScore += 1;
         if (recentUps === 5) upScore += 1.5; // Strong sustained trend
         if (recentDowns >= 3) downScore += 1;
-                if (recentDowns === 5) downScore += 1.5;
+        if (recentDowns === 5) downScore += 1.5;
 
         // --- 1. EXTENDED CANDLE DATA (Needed for Wicks) ---
         const opens = candles.map(c => parseFloat(c[1]));
@@ -285,43 +285,26 @@ async function generatePrediction(targetEpoch) {
             if (currentClose < lowerBB && rsi < 28) upScore += 4;
         }
 
-        let prediction = "NONE";
-        let winningScore = 0, tryScore = 0;
-        let tryPred = (upScore > downScore) ? "UP" : "DOWN";
-        
-        // The Confidence Threshold
-        const CONFIDENCE_THRESHOLD = 5.5; 
-
-        if (upScore > downScore && upScore >= CONFIDENCE_THRESHOLD) { 
-            prediction = "UP";
-            winningScore = upScore;
-        } else if (downScore > upScore && downScore >= CONFIDENCE_THRESHOLD) { 
-            prediction = "DOWN";
-            winningScore = downScore; 
-        } else { 
-            prediction = "SKIP";
-            tryScore = Math.max(upScore, downScore); 
-        }
+                // Determine Winner (Always trades, no SKIP logic)
+        let prediction = (upScore >= downScore) ? "UP" : "DOWN";
+        let winningScore = Math.max(upScore, downScore);
         
         let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
-        let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
-        let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
-        // Webhook Alert (Fixed the variables so it doesn't crash)
-        if (numericConfidence >= 75.0 && prediction !== "SKIP") {
+        // Webhook Alert (Only fires if confidence is 75% or higher)
+        if (numericConfidence >= 75.0) {
             const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
-            const payload = {
-                username: "Cake Alert Bot 🍰",
-                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${prediction}**\nConfidence: **${displayConf}**`
-            };
-
             fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    username: "Cake Alert Bot 🍰",
+                    content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${prediction}**\nConfidence: **${finalConfidence}**`
+                })
             }).catch(err => console.error("Failed to send webhook:", err));
         }
+
 
 
         // --- NEW: CALCULATE "LATER" LIKELIHOOD ---
