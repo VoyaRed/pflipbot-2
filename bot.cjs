@@ -85,6 +85,19 @@ async function checkRound() {
     lastEpochChecked = currentEpoch;
 }
 
+async function updateMarketStats(rsi, macd, price) {
+    const { error } = await supabaseClient
+        .from('market_stats')
+        .upsert([{ 
+            id: 1, 
+            rsi: rsi, 
+            macd: macd, 
+         //   price: price,
+            updated_at: new Date().toISOString() 
+        }]);
+    if (error) console.error("Error updating stats:", error);
+}
+
 async function generatePrediction(targetEpoch) {
     try {
         // 1. Access the variable you set in Render
@@ -244,19 +257,6 @@ async function generatePrediction(targetEpoch) {
     } catch (e) {
         console.error("Brain Failed:", e);
     }
-}
-
-async function updateMarketStats(rsi, macd, price) {
-    const { error } = await supabaseClient
-        .from('market_stats')
-        .upsert([{ 
-            id: 1, 
-            rsi: rsi, 
-            macd: macd, 
-            price: price,
-            updated_at: new Date().toISOString() 
-        }]);
-    if (error) console.error("Error updating stats:", error);
 }
 
 async function verifyResult(epochToCheck) {
