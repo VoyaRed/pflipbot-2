@@ -376,13 +376,6 @@ async function checkRound() {
         const liveData = getPredictionData(liveEpoch);
         const liveBetEl = document.getElementById("live-bet");
         const liveBetPriceEl = document.getElementById("live-bet-price");
-        // ... rest of the function
-    } catch (e) {
-        console.error("CheckRound Error:", e);
-    }
-}
-
-
         if (liveData) {
                 if (liveData.pred === "SKIP") {
                 const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
