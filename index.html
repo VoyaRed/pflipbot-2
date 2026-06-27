@@ -326,543 +326,204 @@
     </div>
 
     <script>
-        // --- THEME TOGGLE LOGIC ---
-        const themeBtn = document.getElementById('theme-toggle');
-        const currentTheme = localStorage.getItem('cakeTheme') || 'light';
-        
-        if (currentTheme === 'dark') {
-            document.body.classList.add('dark-mode');
-            themeBtn.innerText = '☀️ Strawberry Vanilla';
-        }
+    // --- THEME TOGGLE LOGIC ---
+    const themeBtn = document.getElementById('theme-toggle');
+    const currentTheme = localStorage.getItem('cakeTheme') || 'light';
+    
+    if (currentTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        themeBtn.innerText = '☀️ Strawberry Vanilla';
+    }
 
-        themeBtn.addEventListener('click', () => {
-            document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            
-            localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
-            themeBtn.innerText = isDark ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
-            
-            // Re-render TradingView widget based on theme
-            initTradingView();
+    themeBtn.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        
+        localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
+        themeBtn.innerText = isDark ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
+        initTradingView();
+    });
+
+    function initTradingView() {
+        const isDark = document.body.classList.contains('dark-mode');
+        document.getElementById('tv-container').innerHTML = ''; 
+        new TradingView.widget({ 
+            "container_id": "tv-container", 
+            "symbol": "BINANCE:BNBUSD", 
+            "interval": "5", 
+            "theme": isDark ? "dark" : "light", 
+            "autosize": true, 
+            "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] 
         });
+    }
 
-        function initTradingView() {
-            const isDark = document.body.classList.contains('dark-mode');
-            document.getElementById('tv-container').innerHTML = ''; // Clear existing
-            new TradingView.widget({ 
-                "container_id": "tv-container", 
-                "symbol": "BINANCE:BNBUSD", 
-                "interval": "5", 
-                "theme": isDark ? "dark" : "light", 
-                "autosize": true, 
-                "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] 
-            });
+    // --- DASHBOARD LOGIC (READ-ONLY) ---
+    const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
+    const ABI = [
+        "function currentEpoch() view returns (uint256)", 
+        "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
+    ];
+    
+    const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+    const CHAINLINK_ABI = [
+        "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
+    ];
+
+    let provider, contract, oracleContract, timerInterval;
+    let lastLockedPrice = 0;
+
+    async function fetchOraclePrice() {
+        if (!oracleContract) return;
+        try {
+            const data = await oracleContract.latestRoundData();
+            const price = (data.answer / 1e8); 
+            
+            const el = document.getElementById('live-last-price');
+            if (el) {
+                el.innerText = '$' + price.toFixed(4);
+                if (lastLockedPrice > 0) {
+                    el.className = price >= lastLockedPrice ? 'main-price up' : 'main-price down';
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching Oracle price:", error);
         }
+    }
 
+    async function loadLedgerHistory() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('prediction_logs')
+                .select('*')
+                .order('epoch_id', { ascending: false })
+                .limit(20);
 
-        // --- BOT LOGIC ---
-        const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            if (data && data.length > 0) {
+                document.getElementById('ledger').innerHTML = ''; // clear before load
+                data.slice().reverse().forEach(log => {
+                    renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence || "DB");
+                });
+            }
+        } catch (e) {
+            console.error("Could not load ledger history", e);
+        }
+    }
 
-        const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
-        const ABI = [
-            "function currentEpoch() view returns (uint256)", 
-            "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
-        ];
+    async function init() {
+        initTradingView(); 
+        try {
+            const fastest = await findFastestRPC();
+            provider = fastest.provider; 
+            contract = fastest.contract;
+            oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
+            setInterval(fetchOraclePrice, 3000);
+            fetchOraclePrice(); 
+        } catch (error) { 
+            console.error("Initialization failed, retrying in 10s...");
+            setTimeout(init, 10000); 
+            return; 
+        }
         
-        const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
-        const CHAINLINK_ABI = [
-            "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
+        await loadLedgerHistory();
+        runLoop();
+    }
+
+    async function runLoop() {
+        try {
+            await updateDashboardData();
+            await loadLedgerHistory(); // Poll database for bot updates
+            setTimeout(runLoop, 10000); 
+        } catch (error) {
+            setTimeout(runLoop, 20000);
+        }
+    }
+
+    async function findFastestRPC() {
+        const nodes = [
+            "https://bsc-rpc.publicnode.com",
+            "https://binance.llamarpc.com",
+            "https://bsc-dataseed.binance.org"
         ];
-
-        let provider, contract, oracleContract, lastEpoch = 0, timerInterval;
-        let lastLockedPrice = 0;
-
-        async function fetchOraclePrice() {
-            if (!oracleContract) return;
+        for (let url of nodes) {
             try {
-                const data = await oracleContract.latestRoundData();
-                const price = (data.answer / 1e8); 
-                
-                const el = document.getElementById('live-last-price');
-                if (el) {
-                    el.innerText = '$' + price.toFixed(4);
-                    if (lastLockedPrice > 0) {
-                        el.className = price >= lastLockedPrice ? 'main-price up' : 'main-price down';
-                    }
-                }
-            } catch (error) {
-                console.error("Error fetching Oracle price:", error);
-            }
+                const p = new ethers.providers.JsonRpcProvider(url);
+                const c = new ethers.Contract(PREDICT_ADDR, ABI, p);
+                await c.currentEpoch(); 
+                return { provider: p, contract: c };
+            } catch (e) { }
         }
+        throw new Error("All RPC nodes failed.");
+    }
 
-        async function fetchKlines() {
-            const PROXY = "https://corsproxy.io/?"; 
-            const URL = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=40";
+    async function updateDashboardData() {
+        const currentEpoch = (await contract.currentEpoch()).toNumber();
+        const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
+        const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
+
+        document.getElementById("next-epoch").innerText = `#${currentEpoch}`;
+        if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
+        if (expiredEpoch > 0) document.getElementById("prev-epoch").innerText = `#${expiredEpoch}`;
+
+        if (liveEpoch > 0) {
+            const liveRound = await contract.rounds(liveEpoch);
+            const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
+            const totalPool = parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4);
             
-            try {
-                const res = await fetch(PROXY + encodeURIComponent(URL));
-                if (res.ok) {
-                    return await res.json();
-                } else {
-                    throw new Error("Proxy request failed");
-                }
-            } catch (e) {
-                console.warn("Primary proxy failed, trying backup...");
-                const res = await fetch("https://thingproxy.freeboard.io/fetch/" + URL);
-                return await res.json();
-            }
+            lastLockedPrice = parseFloat(lockPrice); 
+            document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
+            document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
+            startTimer(liveRound.closeTimestamp.toNumber());
         }
 
-        function getPredictionData(epoch) {
-            const raw = localStorage.getItem(`pred_${epoch}`);
-            if (!raw) return null;
-            try { return JSON.parse(raw); } catch (e) { return { pred: raw, conf: "N/A" }; }
-        }
+        const nextRoundData = await contract.rounds(currentEpoch);
+        const nextPool = parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4);
+        document.getElementById('next-prize-pool').innerText = `${nextPool} BNB`;
+        
+        // Let the user know the cloud is handling it
+        document.getElementById('bot-prediction').innerText = "Cloud Bot Running";
+        document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
+        document.getElementById('next-conf').innerText = "24/7 Active";
+    }
 
-        async function loadLedgerHistory() {
-            try {
-                // MODIFICATION: Pulling the last 288 rounds (24 hours at 5 min per round)
-                const { data, error } = await supabaseClient
-                    .from('prediction_logs')
-                    .select('*')
-                    .order('epoch_id', { ascending: false })
-                    .limit(288); // 24 hours of logs
+    function startTimer(targetTimestamp) {
+        clearInterval(timerInterval);
+        const bar = document.getElementById('progress-bar');
+        const text = document.getElementById('time-left');
 
-                if (data && data.length > 0) {
-                    // Reverse to get chronological order from bottom up in the UI
-                    data.slice().reverse().forEach(log => {
-                        renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence || "DB");
-                    });
-                }
-            } catch (e) {
-                console.error("Could not load ledger history", e);
-            }
-        }
+        timerInterval = setInterval(() => {
+            const now = Math.floor(Date.now() / 1000);
+            const secondsLeft = targetTimestamp - now;
+            const total = 300; 
 
-        async function init() {
-            initTradingView(); // Call new modular function
-            
-            try {
-                const fastest = await findFastestRPC();
-                provider = fastest.provider; 
-                contract = fastest.contract;
-                
-                oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
-                
-                setInterval(fetchOraclePrice, 3000);
-                fetchOraclePrice(); 
-                
-            } catch (error) { 
-                console.error("Initialization failed, retrying in 10s...");
-                setTimeout(init, 10000); 
-                return; 
-            }
-            
-            await loadLedgerHistory();
-            runLoop();
-        }
-
-        async function runLoop() {
-            try {
-                await checkRound();
-                setTimeout(runLoop, 10000); 
-            } catch (error) {
-                console.warn("Loop error, backing off for 20s:", error);
-                setTimeout(runLoop, 20000);
-            }
-        }
-
-        async function findFastestRPC() {
-            const nodes = [
-                "https://bsc-rpc.publicnode.com",
-                "https://binance.llamarpc.com",
-                "https://bsc-dataseed.binance.org"
-            ];
-            
-            for (let url of nodes) {
-                try {
-                    const p = new ethers.providers.JsonRpcProvider(url);
-                    const c = new ethers.Contract(PREDICT_ADDR, ABI, p);
-                    await c.currentEpoch(); 
-                    return { provider: p, contract: c };
-                } catch (e) {
-                    console.warn(`Node ${url} failed, trying next...`);
-                }
-            }
-            throw new Error("All RPC nodes failed.");
-        }
-
-        async function checkRound() {
-            try {
-                const currentEpoch = (await contract.currentEpoch()).toNumber();
-                const nextEpoch = currentEpoch;
-                const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
-                const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
-
-                // --- UI HEADER UPDATES ---
-                document.getElementById("next-epoch").innerText = `#${nextEpoch}`;
-                if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
-                if (expiredEpoch > 0) document.getElementById("prev-epoch").innerText = `#${expiredEpoch}`;
-
-                // --- LIVE CARD UPDATE ---
-                const liveData = getPredictionData(liveEpoch);
-                const liveBetEl = document.getElementById("live-bet");
-                const liveBetPriceEl = document.getElementById("live-bet-price");
-                
-                if (liveData) {
-                    if (liveData.pred === "SKIP") {
-                        const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                        const displayConf = liveData.tryConf || "--%";
-                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: var(--subtext); line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
-                        liveBetEl.className = "prediction-badge pred-waiting";
-                    } else {
-                        liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
-                        liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
-                    }
-                    document.getElementById('live-conf').innerText = (liveData.pred === "SKIP" ? "SKIP" : liveData.conf);
-                    liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
-                }
-
-                if (liveEpoch > 0) {
-                    const liveRound = await contract.rounds(liveEpoch);
-                    const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
-                    const totalPool = parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4);
-                    
-                    lastLockedPrice = parseFloat(lockPrice); 
-                    
-                    document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
-                    document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
-
-                    const closeTimestamp = liveRound.closeTimestamp.toNumber();
-                    startTimer(closeTimestamp);
-                }
-
-                // --- NEXT CARD UPDATE ---
-                const nextRoundData = await contract.rounds(nextEpoch);
-                const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
-                const nextPool = parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4);
-                document.getElementById('next-prize-pool').innerText = `${nextPool} BNB`;
-
-                const now = Math.floor(Date.now() / 1000);
-                const secondsLeft = lockTimestamp - now;
-                const nextData = getPredictionData(nextEpoch);
-
-                if (!nextData) {
-                    if (secondsLeft > 0 && secondsLeft <= 75) {
-                        await generatePrediction(nextEpoch);
-                    } else {
-                        document.getElementById('bot-prediction').innerText = "Analyzing...";
-                        document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
-                        document.getElementById('next-conf').innerText = "Waiting for 75s";
-                        document.getElementById('bot-bet-price').innerText = "";
-                    }
-                } else {
-                    displayPrediction(nextData.pred, nextData.conf, nextData.try, nextData.tryConf, nextData.betPrice);
-                }
-
-                // --- EXPIRED CARD UPDATE ---
-                if (expiredEpoch > 0) {
-                    const expiredRound = await contract.rounds(expiredEpoch);
-                    const expiredData = getPredictionData(expiredEpoch);
-                    const prevBetEl = document.getElementById("prev-bet");
-                    const prevBetPriceEl = document.getElementById("prev-bet-price"); 
-
-                    if (expiredData) {
-                        if (expiredData.pred === 'SKIP') {
-                            const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                            const displayConf = expiredData.tryConf || "--%";
-                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: var(--subtext); line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
-                            prevBetEl.className = "prediction-badge pred-waiting";
-                        } else {
-                            prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
-                            prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
-                        }
-                        document.getElementById('prev-conf').innerText = (expiredData.pred === "SKIP" ? "SKIP" : expiredData.conf);
-                        prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
-                    }
-
-                    const prevResultEl = document.getElementById('prev-result');
-                    if (expiredRound.oracleCalled) {
-                        const lockPrice = parseFloat(ethers.utils.formatUnits(expiredRound.lockPrice, 8));
-                        const closePrice = parseFloat(ethers.utils.formatUnits(expiredRound.closePrice, 8));
-                        const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
-                        
-                        prevResultEl.innerText = actualResult;
-                        prevResultEl.className = `prediction-badge ${actualResult === 'UP' ? 'pred-up' : 'pred-down'}`;
-                        
-                        document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
-                        const closeEl = document.getElementById('prev-close-price');
-                        closeEl.innerText = `$${closePrice.toFixed(4)}`;
-                        closeEl.className = `main-price ${actualResult === 'UP' ? 'up' : 'down'}`;
-                        
-                    } else {
-                        prevResultEl.innerText = "Resolving..."; 
-                        prevResultEl.className = "prediction-badge pred-waiting";
-                    }
-                }
-
-                if (currentEpoch > lastEpoch && lastEpoch !== 0) {
-                    verifyResult(expiredEpoch); 
-                }
-                lastEpoch = currentEpoch;
-                
-            } catch(e) { console.error("CheckRound Error:", e); }
-        }
-
-        async function generatePrediction(targetEpoch) {
-            try {
-                const predOracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
-                const [, price] = await predOracleContract.latestRoundData();
-                const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8)) - 1; 
-                const currentBetPrice = oraclePrice.toFixed(4); 
-
-                const endpoints = [
-                    "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
-                    "https://api1.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
-                    "https://corsproxy.io/?" + encodeURIComponent("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100")
-                ];
-
-                let candles;
-                for (let url of endpoints) {
-                    try {
-                        const res = await fetch(url);
-                        if (res.ok) { candles = await res.json(); break; }
-                    } catch (e) {}
-                }
-                if (!candles) throw new Error("API failed");
-                
-                const closes = candles.map(c => parseFloat(c[4])); 
-                const volumes = candles.map(c => parseFloat(c[5])); 
-                const currentClose = closes[closes.length - 1];
-
-                // --- 1. CALCULATE RSI (14) ---
-                let gains = 0, losses = 0;
-                for(let i = closes.length - 14; i < closes.length; i++) {
-                    const diff = closes[i] - closes[i-1];
-                    if (diff > 0) gains += diff; else losses += Math.abs(diff);
-                }
-                const avgGain = gains / 14; 
-                const avgLoss = losses / 14;
-                let rsi = 100;
-                if (avgLoss !== 0) { rsi = 100 - (100 / (1 + (avgGain / avgLoss))); } else if (avgGain === 0) { rsi = 50; }
-                document.getElementById('live-rsi').innerText = rsi.toFixed(2);
-
-                // --- 2. CALCULATE BOLLINGER BANDS (20, 2) ---
-                const bbPeriod = 20;
-                const bbSlice = closes.slice(-bbPeriod);
-                const sma = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
-                const variance = bbSlice.reduce((acc, val) => acc + Math.pow(val - sma, 2), 0) / bbPeriod;
-                const stdDev = Math.sqrt(variance);
-                const upperBB = sma + (stdDev * 2);
-                const lowerBB = sma - (stdDev * 2);
-
-                // Helper: Full EMA Array Calculator for MACD
-                const calculateEMAArray = (data, period) => {
-                    const k = 2 / (period + 1);
-                    let emaArray = [data[0]];
-                    for (let i = 1; i < data.length; i++) {
-                        emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
-                    }
-                    return emaArray;
-                };
-
-                // --- 3. CALCULATE EMA (9 & 21) ---
-                const ema9 = calculateEMAArray(closes, 9)[closes.length - 1];
-                const ema21 = calculateEMAArray(closes, 21)[closes.length - 1];
-
-                // --- 4. CALCULATE MACD (12, 26, 9) ---
-                const ema12Array = calculateEMAArray(closes, 12);
-                const ema26Array = calculateEMAArray(closes, 26);
-                const macdLineArray = ema12Array.map((v, i) => v - ema26Array[i]);
-                const signalLineArray = calculateEMAArray(macdLineArray, 9);
-                
-                const currentMACD = macdLineArray[macdLineArray.length - 1];
-                const currentSignal = signalLineArray[signalLineArray.length - 1];
-                const currentHist = currentMACD - currentSignal;
-                const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
-                
-                let macdColor = currentHist >= 0 ? "var(--up)" : "var(--down)";
-                document.getElementById('live-macd').innerHTML = `<span style="color: ${macdColor}">${currentHist.toFixed(3)}</span>`;
-
-                // --- 5. CALCULATE VOLUME SPIKES ---
-                const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
-                const currentVol = volumes[volumes.length - 1];
-                const hasVolumeSpike = currentVol > (volSMA20 * 1.5); 
-
-                // --- 6. THE UPGRADED BRAIN LOGIC ---
-                let upScore = 0;
-                let downScore = 0;
-                
-                let bbWidth = (upperBB - lowerBB) / sma;
-                let isChoppy = bbWidth < 0.0015; 
-
-                if (isChoppy) {
-                    if (hasVolumeSpike) {
-                        if (currentClose >= upperBB || rsi > 65) downScore += 4;
-                        if (currentClose <= lowerBB || rsi < 35) upScore += 4;
-                    }
-                } else {
-                    if (ema9 > ema21) upScore += 1; 
-                    if (ema9 < ema21) downScore += 1; 
-                    
-                    if (rsi > 68) downScore += 2; 
-                    if (rsi < 32) upScore += 2; 
-
-                    if (currentClose > upperBB) downScore += 2; 
-                    if (currentClose < lowerBB) upScore += 2;
-                    
-                    if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2;
-                    if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
-
-                    if (hasVolumeSpike) {
-                        const opens = parseFloat(candles[candles.length - 1][1]);
-                        if (currentClose > opens) upScore += 1; 
-                        if (currentClose < opens) downScore += 1; 
-                    }
-                }
-
-                // --- 7. FINALIZE PREDICTION ---
-                let prediction = "NONE";
-                let winningScore = 0;
-                let tryScore = 0;
-                let tryPred = (currentMACD > currentSignal || rsi < 45) ? "UP" : "DOWN";
-                
-                if (upScore > downScore && upScore >= 4) {
-                    prediction = "UP";
-                    winningScore = upScore;
-                } else if (downScore > upScore && downScore >= 4) {
-                    prediction = "DOWN";
-                    winningScore = downScore;
-                } else {
-                    prediction = "SKIP";
-                    tryScore = (tryPred === "UP") ? upScore : downScore;
-                }
-                
-                let finalConfidence = Math.min(99.1, 50 + (winningScore * 8.5)).toFixed(1) + "%";
-                let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
-
-                if (prediction === "SKIP") {
-                    const skipObject = { pred: "SKIP", conf: "Chop / Low Vol", try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
-                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
-                    displayPrediction("SKIP", "Chop / Low Vol", tryPred, tryConf, currentBetPrice);
-                } else {
-                    const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
-                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
-                    displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
-                }   
-            } catch (e) { console.error("Brain Failed:", e); }
-        }
-
-        function displayPrediction(prediction, confidence, tryPred = null, tryConf = null, betPrice = null) {
-            const predEl = document.getElementById('bot-prediction');
-            const betPriceEl = document.getElementById('bot-bet-price');
-
-            if (prediction === "SKIP") {
-                const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
-                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: var(--subtext); line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
-                predEl.className = "prediction-badge pred-waiting";
+            if (secondsLeft <= 0) {
+                text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval);
             } else {
-                predEl.innerText = `${prediction} (${confidence})`;
-                predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
+                const mins = Math.floor(secondsLeft / 60); const secs = secondsLeft % 60;
+                text.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                bar.style.width = `${Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100))}%`;
             }
-            
-            document.getElementById('next-conf').innerText = (prediction === "SKIP" ? "SKIP" : confidence);
-            betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
-        }
+        }, 1000);
+    }
 
-        function startTimer(targetTimestamp) {
-            clearInterval(timerInterval);
-            const bar = document.getElementById('progress-bar');
-            const text = document.getElementById('time-left');
+    function renderLedger(epoch, predicted, actual, result, confidence) {
+        const ledger = document.getElementById('ledger');
+        let resultColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "var(--subtext)");
+        let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "var(--subtext)");
+        
+        if (ledger.innerHTML.includes(`Epoch #${epoch}`)) return;
 
-            timerInterval = setInterval(() => {
-                const now = Math.floor(Date.now() / 1000);
-                const secondsLeft = targetTimestamp - now;
-                const total = 300; 
+        ledger.innerHTML = `
+        <div class="ledger-item">
+            <div><strong>Epoch #${epoch}</strong> <span class="confidence-tag" style="margin-left: 10px;">${confidence} Conf.</span></div>
+            <div>Bot: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; Result: <span style="color: ${resultColor}; font-weight: 800;">${result}</span></div>
+        </div>` + ledger.innerHTML;
+    }
 
-                if (secondsLeft <= 0) {
-                    text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval);
-                } else {
-                    const mins = Math.floor(secondsLeft / 60); const secs = secondsLeft % 60;
-                    text.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                    bar.style.width = `${Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100))}%`;
-                }
-            }, 1000);
-        }
-
-        function triggerWinEffect() {
-            var duration = 3 * 1000;
-            var animationEnd = Date.now() + duration;
-            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
-
-            function randomInRange(min, max) { return Math.random() * (max - min) + min; }
-
-            var interval = setInterval(function() {
-                var timeLeft = animationEnd - Date.now();
-                if (timeLeft <= 0) return clearInterval(interval);
-                var particleCount = 50 * (timeLeft / duration);
-                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
-                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
-            }, 250);
-        }
-
-        function triggerLossEffect() {
-            document.body.classList.add('loss-shake');
-            setTimeout(() => {
-                document.body.classList.remove('loss-shake');
-            }, 1000);
-        }
-
-        async function verifyResult(epochToCheck) {
-            try {
-                if (epochToCheck <= 0) return;
-                const round = await contract.rounds(epochToCheck);
-                if (!round.oracleCalled) return; 
-
-                const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
-                const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
-                const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
-                const botData = getPredictionData(epochToCheck);
-                
-                if (botData) {
-                    const isWin = (botData.pred === "SKIP") ? "SKIPPED" : ((botData.pred === actualResult) ? "WIN" : "LOSS");
-                    
-                    if (isWin === "WIN") {
-                        triggerWinEffect();
-                    } else if (isWin === "LOSS") {
-                        triggerLossEffect();
-                    }
-                    
-                    await supabaseClient.from('prediction_logs').insert([{ 
-                        epoch_id: epochToCheck, 
-                        predicted_side: botData.pred, 
-                        result: isWin,
-                        confidence: botData.conf
-                    }]);
-                    
-                    renderLedger(epochToCheck, botData.pred, actualResult, isWin, botData.conf);
-                }
-            } catch(e) {}
-        }
-
-        function renderLedger(epoch, predicted, actual, result, confidence) {
-            const ledger = document.getElementById('ledger');
-            
-            let resultColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "var(--subtext)");
-            let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "var(--subtext)");
-            
-            if (ledger.innerHTML.includes(`Epoch #${epoch}`)) return;
-
-            ledger.innerHTML = `
-            <div class="ledger-item">
-                <div><strong>Epoch #${epoch}</strong> <span class="confidence-tag" style="margin-left: 10px;">${confidence} Conf.</span></div>
-                <div>Bot: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; Result: <span style="color: ${resultColor}; font-weight: 800;">${result}</span></div>
-            </div>` + ledger.innerHTML;
-        }
-
-        window.onload = init;
-    </script>
+    window.onload = init;
+</script>
 </body>
 </html>
