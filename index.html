@@ -200,7 +200,30 @@
         
         // Lowercased string to satisfy Ethers.js strict checksum requirements
         const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
-        const ABI_CHAINLINK = ["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"];
+        const CHAINLINK_ABI = [
+    "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
+];
+
+// Setup Ethers Provider (Public BSC RPC)
+const provider = new ethers.providers.JsonRpcProvider("https://bsc-dataseed.binance.org/");
+const oracleContract = new ethers.Contract(CHAINLINK_ORACLE_ADDRESS, CHAINLINK_ABI, provider);
+
+async function fetchOraclePrice() {
+    try {
+        const data = await oracleContract.latestRoundData();
+        // Chainlink prices have 8 decimals, so we divide by 10^8
+        const price = data.answer / 1e8;
+        
+        // Update your live price element with the Oracle price
+        document.getElementById('live-price').innerText = '$' + price.toFixed(4);
+    } catch (error) {
+        console.error("Error fetching Oracle price:", error);
+    }
+}
+
+// Poll the oracle every 3 seconds to stay updated
+setInterval(fetchOraclePrice, 3000);
+fetchOraclePrice(); // Initial call
         
         const RPC_URLS = [
     "https://binance.llamarpc.com",
