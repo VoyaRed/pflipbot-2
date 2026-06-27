@@ -419,38 +419,30 @@
         }
 
         async function updateMarketVisualsFromDB() {
-            const { data, error } = await supabaseClient
-                .from('market_stats')
-                .select('*')
-                .eq('id', 1)
-                .maybeSingle(); // <--- This returns 'null' instead of crashing
-            
-            if (data) {
-                // Update your UI here
-                const rsiEl = document.getElementById('live-rsi');
-                if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
-                // ... rest of your updates
-            } else {
-                console.log("Market stats not available yet. Waiting for bot...");
-            }
-        
-            if (data && !error) {
-                // Update RSI
-                const rsiEl = document.getElementById('live-rsi');
-                if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
-        
-                // Update MACD
-                const macdEl = document.getElementById('live-macd');
-                if (macdEl) {
-                    let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)";
-                    macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
-                }
-                
-                // Update Price (if needed)
-                const priceEl = document.getElementById('live-last-price');
-                if (priceEl) priceEl.innerText = '$' + data.price.toFixed(4);
-            }
+    const { data, error } = await supabaseClient
+        .from('market_stats')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle(); 
+    
+    // If we have data and no errors, update the UI
+    if (data && !error) {
+        // 1. Update RSI
+        const rsiEl = document.getElementById('live-rsi');
+        if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
+
+        // 2. Update MACD
+        const macdEl = document.getElementById('live-macd');
+        if (macdEl) {
+            let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)";
+            macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
         }
+        
+        // Note: Price update removed here because Chainlink handles it!
+    } else {
+        console.log("Market stats not available yet or table is empty. Waiting for bot...");
+    }
+}
 
         async function runSyncLoop() {
             try {
