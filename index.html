@@ -354,8 +354,6 @@ async function checkRound() {
         const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
         const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
         // 1. Declare variables at the top
-        let expiredData = null;
-        let expiredRound = null;
         document.getElementById("next-epoch").innerText = `#${nextEpoch}`;
         if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
         // 2. Assign values WITHOUT 'const' or 'let'
