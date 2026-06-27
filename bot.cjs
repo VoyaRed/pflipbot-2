@@ -64,7 +64,6 @@ async function runLoop() {
 async function checkRound() {
     const currentEpoch = (await contract.currentEpoch()).toNumber();
     const nextEpoch = currentEpoch;
-    const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
 
     // 1. Predict the NEXT round
     const nextRoundData = await contract.rounds(nextEpoch);
@@ -77,12 +76,24 @@ async function checkRound() {
         await generatePrediction(nextEpoch);
     }
 
-    // 2. Verify the EXPIRED round
-    if (currentEpoch > lastEpochChecked && lastEpochChecked !== 0 && expiredEpoch > 0) {
-        await verifyResult(expiredEpoch);
+    // 2. Continually Verify ALL pending expired rounds
+    try {
+        const { data: pendingLogs } = await supabaseClient
+            .from('prediction_logs')
+            .select('epoch_id')
+            .eq('result', 'PENDING');
+
+        if (pendingLogs && pendingLogs.length > 0) {
+            for (let log of pendingLogs) {
+                // An epoch is only considered expired if it is at least 2 behind the current one
+                if (log.epoch_id <= currentEpoch - 2) {
+                    await verifyResult(log.epoch_id);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error checking pending rounds:", e);
     }
-    
-    lastEpochChecked = currentEpoch;
 }
 
 async function updateMarketStats(rsi, macd, price) {
