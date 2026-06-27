@@ -111,7 +111,8 @@ async function updateMarketStats(rsi, macd, price, laterPred = "NONE", laterConf
 
 async function generatePrediction(targetEpoch) {
     try {
-        memoryStore[`pred_${targetEpoch}`] = "PENDING";`
+        memoryStore[`pred_${targetEpoch}`] = "PENDING";
+        
         const apiKey = process.env.SCRAPINGBEE_KEY;
         if (!apiKey) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
