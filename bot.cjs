@@ -282,19 +282,30 @@ async function verifyResult(epochToCheck) {
                 .update({ result: resultStatus })
                 .eq('epoch_id', epochToCheck); 
 
-            // --- NEW: Calculate Running Win Rate in Terminal ---
-            // Uses .in() to explicitly fetch only rows matching your true final statuses
+            // --- Calculate Both Running Win Rates in Terminal ---
             const { data: recentLogs } = await supabaseClient
                 .from('prediction_logs')
-                .select('result')
+                .select('result, confidence')
                 .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
-                .order('epoch_id', { ascending: false })
-                .limit(15);
+                .order('epoch_id', { ascending: false });
 
             if (recentLogs && recentLogs.length > 0) {
-                const wins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-                const rate = ((wins / recentLogs.length) * 100).toFixed(1);
-                console.log(`📈 Rolling Win Rate (Last ${recentLogs.length} rounds): ${rate}%`);
+                // Calculate Mixed Market (Last 15 logs overall)
+                const mixedSlice = recentLogs.slice(0, 15);
+                const mixedWins = mixedSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+                const mixedRate = ((mixedWins / mixedSlice.length) * 100).toFixed(1);
+
+                // Calculate Trend Market (Last 15 logs with confidence strictly > 50%)
+                const trendSlice = recentLogs.filter(l => {
+                    const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
+                    return match ? parseFloat(match[1]) > 50.0 : true;
+                }).slice(0, 15);
+                
+                const trendWins = trendSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+                const trendRate = trendSlice.length > 0 ? ((trendWins / trendSlice.length) * 100).toFixed(1) : "0.0";
+
+                console.log(`📈 Mixed Market (incl. 50% Chops - Last 15): ${mixedRate}%`);
+                console.log(`🚀 Trend Market (>50% - Last 15): ${trendRate}%`);
             }
             // ---------------------------------------------------
         }
