@@ -414,6 +414,19 @@
             } catch (error) {}
         }
 
+        async function updateMarketStats(rsi, macd, price) {
+    const { error } = await supabaseClient
+        .from('market_stats')
+        .upsert([{ 
+            id: 1, 
+            rsi: rsi, 
+            macd: macd, 
+         //   price: price,
+            updated_at: new Date().toISOString() 
+        }]);
+    if (error) console.error("Error updating stats:", error);
+}
+
         async function updateMarketVisualsFromDB() {
             const { data, error } = await supabaseClient
                 .from('market_stats')
