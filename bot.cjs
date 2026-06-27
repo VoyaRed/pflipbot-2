@@ -264,7 +264,7 @@ async function generatePrediction(targetEpoch) {
         // --- 5. THE DECISION ENGINE ---
         if (atrPercentage < 0.06 || isChoppy) {
             // Market is flat, highly unpredictable on 5m. Skip it.
-            upScore = 0; downScore = 0;
+            upScore = *0.5; downScore = *0.5;
         } else {
             // Trend Alignment (MACD & EMA)
             if (ema9 > ema21) upScore += 1.5;
