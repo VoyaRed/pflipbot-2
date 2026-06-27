@@ -404,8 +404,47 @@
 
             if (data && data.length > 0) {
                 document.getElementById('ledger').innerHTML = ''; // clear before load
+                
+                // Get the epoch numbers from the UI
+                const nextEpoch = parseInt(document.getElementById("next-epoch").innerText.replace('#', '')) || 0;
+                const liveEpoch = parseInt(document.getElementById("live-epoch").innerText.replace('#', '')) || 0;
+                const prevEpoch = parseInt(document.getElementById("prev-epoch").innerText.replace('#', '')) || 0;
+
                 data.slice().reverse().forEach(log => {
-                    renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence || "DB");
+                    // 1. Populate the NEXT card if we have a match
+                    if (log.epoch_id === nextEpoch) {
+                        const el = document.getElementById('bot-prediction');
+                        el.innerText = log.predicted_side;
+                        el.className = `prediction-badge pred-${log.predicted_side.toLowerCase()}`;
+                        document.getElementById('next-conf').innerText = log.confidence;
+                    }
+                    
+                    // 2. Populate the LIVE card if we have a match
+                    if (log.epoch_id === liveEpoch) {
+                        const el = document.getElementById('live-bet');
+                        el.innerText = log.predicted_side;
+                        el.className = `prediction-badge pred-${log.predicted_side.toLowerCase()}`;
+                        document.getElementById('live-conf').innerText = log.confidence;
+                    }
+
+                    // 3. Populate the EXPIRED card if we have a match
+                    if (log.epoch_id === prevEpoch) {
+                        const el = document.getElementById('prev-bet');
+                        el.innerText = log.predicted_side;
+                        el.className = `prediction-badge pred-${log.predicted_side.toLowerCase()}`;
+                        document.getElementById('prev-conf').innerText = log.confidence;
+                        
+                        const resEl = document.getElementById('prev-result');
+                        resEl.innerText = log.result;
+                        if (log.result === 'WIN') resEl.className = 'prediction-badge pred-up';
+                        else if (log.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
+                        else resEl.className = 'prediction-badge pred-waiting';
+                    }
+
+                    // 4. Only populate the Ledger list with FINISHED rounds
+                    if (log.result !== 'PENDING') {
+                        renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence);
+                    }
                 });
             }
         } catch (e) {
