@@ -264,29 +264,38 @@ async function verifyResult(epochToCheck) {
 
         const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
         const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
-        const actualResult = closePrice > lockPrice ? "UP" : "DOWN";
+        const actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
         
-        const { data } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single();
-        
-        if (data) {
-            // ✅ CHANGE THIS LOGIC:
-            // We now compare the predicted side (even if it was a 'SKIP') against the actual result.
-            // If the user predicted 'SKIP', they technically didn't 'WIN', 
-            // but we want to see if the direction they 'skipped' would have been correct.
-            
+        const { data } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single(); 
+        if (data) { 
             let resultStatus;
             if (data.predicted_side === "SKIP") {
                 resultStatus = "SKIP/" + actualResult; 
             } else {
-                resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS";
+                resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
             }
 
-            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
-
-            // Update Database
+            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`); 
+            
+            // Update Database 
             await supabaseClient.from('prediction_logs')
                 .update({ result: resultStatus })
-                .eq('epoch_id', epochToCheck);
+                .eq('epoch_id', epochToCheck); 
+
+            // --- NEW: Calculate Running Win Rate in Terminal ---
+            const { data: recentLogs } = await supabaseClient
+                .from('prediction_logs')
+                .select('result')
+                .not('result', 'eq', 'PENDING')
+                .order('epoch_id', { ascending: false })
+                .limit(15);
+
+            if (recentLogs && recentLogs.length > 0) {
+                const wins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+                const rate = ((wins / recentLogs.length) * 100).toFixed(1);
+                console.log(`📈 Rolling Win Rate (Last ${recentLogs.length} rounds): ${rate}%`);
+            }
+            // ---------------------------------------------------
         }
     } catch(e) { console.error("Result Verification Failed:", e); }
 }
