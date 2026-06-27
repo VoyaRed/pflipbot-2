@@ -188,6 +188,8 @@ async function generatePrediction(targetEpoch) {
         const currentHist = currentMACD - currentSignal;
         const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
 
+        await updateMarketStats(rsi, currentMACD, currentClose);
+
         // Volume
         const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
         const currentVol = volumes[volumes.length - 1];
