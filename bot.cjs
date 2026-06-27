@@ -283,10 +283,11 @@ async function verifyResult(epochToCheck) {
                 .eq('epoch_id', epochToCheck); 
 
             // --- NEW: Calculate Running Win Rate in Terminal ---
+            // Uses .in() to explicitly fetch only rows matching your true final statuses
             const { data: recentLogs } = await supabaseClient
                 .from('prediction_logs')
                 .select('result')
-                .not('result', 'eq', 'PENDING')
+                .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
                 .order('epoch_id', { ascending: false })
                 .limit(15);
 
