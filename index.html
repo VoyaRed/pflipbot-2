@@ -424,7 +424,16 @@
                 .from('market_stats')
                 .select('*')
                 .eq('id', 1)
-                .single();
+                .maybeSingle(); // <--- This returns 'null' instead of crashing
+            
+            if (data) {
+                // Update your UI here
+                const rsiEl = document.getElementById('live-rsi');
+                if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
+                // ... rest of your updates
+            } else {
+                console.log("Market stats not available yet. Waiting for bot...");
+            }
         
             if (data && !error) {
                 // Update RSI
