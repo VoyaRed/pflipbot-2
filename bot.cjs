@@ -111,7 +111,7 @@ async function updateMarketStats(rsi, macd, price, laterPred = "NONE", laterConf
 
 async function generatePrediction(targetEpoch) {
     try {
-        memoryStore[\pred_${targetEpoch}`] = "PENDING";`
+        memoryStore[`pred_${targetEpoch}`] = "PENDING";`
         const apiKey = process.env.SCRAPINGBEE_KEY;
         if (!apiKey) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
@@ -264,7 +264,7 @@ async function generatePrediction(targetEpoch) {
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
         let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
-        if (numericConfidence >= 75.0) {
+        if (finalConfidence >= 75.0) {
             const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
             const payload = {
                 username: "Cake Alert Bot 🍰",
