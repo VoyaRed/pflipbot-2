@@ -555,31 +555,39 @@
                     if (currentClose < lowerBB) upScore += 2;
                 }
 
-                // --- 5. FINALIZE PREDICTION ---
+               // --- 5. FINALIZE PREDICTION ---
                 let prediction = "NONE";
-                let confidenceBase = 50;
                 
+                // Determine the winner and the winning score
+                let winningScore = 0;
+                let tryScore = 0;
+                let tryPred = (rsi < 50 || ema9 > ema21) ? "UP" : "DOWN";
+
                 if (upScore > downScore && upScore >= 2) {
                     prediction = "UP";
-                    confidenceBase = 50 + (upScore * 8) + Math.random() * 4;
+                    winningScore = upScore;
                 } else if (downScore > upScore && downScore >= 2) {
                     prediction = "DOWN";
-                    confidenceBase = 50 + (downScore * 8) + Math.random() * 4;
+                    winningScore = downScore;
                 } else {
                     prediction = "SKIP";
+                    // For the skip fallback, calculate the confidence of the "try" prediction
+                    tryScore = (tryPred === "UP") ? upScore : downScore;
                 }
 
-                let finalConfidence = Math.min(98.5, confidenceBase).toFixed(1) + "%";
-                let tryPred = (rsi < 50 || ema9 > ema21) ? "UP" : "DOWN"; 
+                // Deterministic calculation: Start at 50%, add 12% per point of conviction
+                // Cap at 98.5%
+                let finalConfidence = Math.min(98.5, 50 + (winningScore * 12)).toFixed(1) + "%";
+                let tryConf = Math.min(98.5, 50 + (tryScore * 12)).toFixed(1) + "%";
 
                 if (prediction === "SKIP") {
-                    const skipObject = { pred: "SKIP", conf: "Chop / Flat", try: tryPred, betPrice: currentBetPrice };
+                    const skipObject = { pred: "SKIP", conf: "Chop / Flat", try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
-                    displayPrediction("SKIP", "Chop / Flat", tryPred, currentBetPrice);
+                    displayPrediction("SKIP", "Chop / Flat", tryPred, tryConf, currentBetPrice);
                 } else {
                     const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
-                    displayPrediction(prediction, finalConfidence, null, currentBetPrice);
+                    displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
                 }
                 
             } catch (e) { console.error("Brain Failed:", e); }
