@@ -503,6 +503,34 @@
         function renderDashboardFromDB(logs, nextEpoch, liveEpoch, prevEpoch) {
             document.getElementById('ledger').innerHTML = ''; // Clear ledger for redraw
             
+            // --- WIN RATE CALCULATION ---
+            // 1. Filter out any rounds that are still PENDING
+            const resolvedLogs = logs.filter(log => log.result !== 'PENDING');
+            
+            // 2. Slice the 15 most recent completed rounds
+            const recent15 = resolvedLogs.slice(0, 15);
+            
+            // 3. Count wins (Normal WINs + SKIP/UP adjustments)
+            let wins = 0;
+            recent15.forEach(log => {
+                if (log.result === 'WIN' || log.result === 'SKIP/UP') {
+                    wins++;
+                }
+            });
+            
+            // 4. Calculate the rolling percentage
+            const winRate = recent15.length > 0 ? ((wins / recent15.length) * 100).toFixed(1) : "0.0";
+            
+            // 5. Inject the percentage badge dynamically into the ledger header
+            const ledgerHeader = document.querySelector('.ledger-box h3');
+            if (ledgerHeader) {
+                ledgerHeader.innerHTML = `UpsideDownCake Execution Ledger 🍰 
+                    <span style="float: right; font-size: 0.95rem; background: var(--up); color: white; padding: 4px 12px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                        Win Rate (Last ${recent15.length}): ${winRate}%
+                    </span>`;
+            }
+            // -----------------------------
+
             let hasPendingNext = false;
 
             logs.forEach(log => {
@@ -534,17 +562,16 @@
                     document.getElementById('prev-conf').innerText = log.confidence;
                     
                     const resEl = document.getElementById('prev-result');
-                        if (resEl) {
+                    if (resEl) {
                         resEl.innerText = log.result;
-                        if (log.result === 'WIN') resEl.className = 'prediction-badge pred-up';
-                        else if (log.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
+                        if (log.result === 'WIN' || log.result === 'SKIP/UP') resEl.className = 'prediction-badge pred-up';
+                        else if (log.result === 'LOSS' || log.result === 'SKIP/DOWN') resEl.className = 'prediction-badge pred-down';
                         else resEl.className = 'prediction-badge pred-waiting';
                     }
                     
                     const closeEl = document.getElementById('prev-close-price');
                     if (closeEl && log.close_price) {
                         closeEl.innerText = `$${log.close_price}`;
-                        // Add null checks for your other properties too
                     }
                 }
 
@@ -553,8 +580,11 @@
                     renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence);
                     
                     if (!notifiedEpochs.has(log.epoch_id)) {
-                        if (log.result === 'WIN') triggerWinEffect();
-                        if (log.result === 'LOSS') { document.body.classList.add('loss-shake'); setTimeout(() => document.body.classList.remove('loss-shake'), 1000); }
+                        if (log.result === 'WIN' || log.result === 'SKIP/UP') triggerWinEffect();
+                        if (log.result === 'LOSS' || log.result === 'SKIP/DOWN') { 
+                            document.body.classList.add('loss-shake'); 
+                            setTimeout(() => document.body.classList.remove('loss-shake'), 1000); 
+                        }
                         notifiedEpochs.add(log.epoch_id);
                     }
                 }
@@ -567,7 +597,7 @@
                 document.getElementById('next-conf').innerText = "Analyzing...";
             }
         }
-
+        
         function renderLedgerRow(epoch, predicted, result, confidence) {
             const ledger = document.getElementById('ledger');
             let resColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "var(--subtext)");
