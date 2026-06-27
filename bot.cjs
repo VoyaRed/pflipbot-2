@@ -87,14 +87,35 @@ async function checkRound() {
 
 async function generatePrediction(targetEpoch) {
     try {
-        // Binance Klines (Direct Fetch for Node.js)
+        // 1. Define URL and Browser-like Headers
         const url = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
-        let candles;
-        try {
-            const res = await fetch(url);
-            if (res.ok) candles = await res.json();
-        } catch (e) { console.error("Binance API fetch failed."); }
-        if (!candles) throw new Error("Binance API failed");
+        const options = {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'Accept': 'application/json'
+            }
+        };
+
+        // 2. Fetch with Retry Logic (Try 3 times)
+        let candles = null;
+        for (let i = 0; i < 3; i++) {
+            try {
+                const res = await fetch(url, options);
+                if (res.ok) {
+                    candles = await res.json();
+                    break; // Success
+                } else {
+                    console.log(`Binance attempt ${i+1} failed with status: ${res.status}`);
+                }
+            } catch (e) {
+                console.log(`Binance attempt ${i+1} caught error: ${e.message}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+        }
+
+        if (!candles) throw new Error("Binance API failed after 3 retries");
+        
+        // --- REST OF YOUR EXISTING LOGIC ---
 
         const closes = candles.map(c => parseFloat(c[4])); 
         const volumes = candles.map(c => parseFloat(c[5])); 
@@ -211,7 +232,8 @@ async function generatePrediction(targetEpoch) {
         
         if (error) console.error("❌ Early Supabase insert error:", error);
 
-    } catch (e) { console.error("Brain Failed:", e); }
+    } catch (e) {
+        console.error("Brain Failed:", e); }
 }
 
 async function verifyResult(epochToCheck) {
