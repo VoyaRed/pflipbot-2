@@ -385,21 +385,24 @@ async function verifyResult(epochToCheck) {
             .order('epoch_id', { ascending: false })
             .limit(15);
 
-        if (recentLogs && recentLogs.length > 0) {
+                if (recentLogs && recentLogs.length > 0) {
+            // 1. MIXED MARKET: The Average of EVERYTHING (Total performance)
             const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const mixedRate = ((mixedWins / recentLogs.length) * 100).toFixed(1);
-            
-            const trendSlice = recentLogs.filter(l => {
+
+            // 2. TREND MARKET: High Conviction Only (Confidence > 55%)
+            const trendLogs = recentLogs.filter(l => {
                 const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
-                return match ? parseFloat(match[1]) > 50.0 : true;
+                return match ? parseFloat(match[1]) >= 55.0 : false;
             });
             
-            const trendWins = trendSlice.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-            const trendRate = trendSlice.length > 0 ? ((trendWins / trendSlice.length) * 100).toFixed(1) : "0.0";
+            const trendWins = trendLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+            const trendRate = trendLogs.length > 0 ? ((trendWins / trendLogs.length) * 100).toFixed(1) : "0.0";
 
-            console.log(`📈 Mixed Market (incl. 50% Chops - Last 15): ${mixedRate}%`);
-            console.log(`🚀 Trend Market (>50% - Last 15): ${trendRate}%`);
-        }
+            console.log(`📈 Mixed Market (Overall Average): ${mixedRate}%`);
+            console.log(`🚀 Trend Market (Conviction > 55%): ${trendRate}%`);
+                 }
+
     } catch(e) { 
         console.error("Result Verification Failed:", e); 
     }
