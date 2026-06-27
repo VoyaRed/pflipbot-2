@@ -382,7 +382,7 @@
                     }
                 document.getElementById('live-conf').innerText = (liveData.pred === "SKIP" ? "SKIP" : liveData.conf);
                 liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
-}
+                }
 
                 if (liveEpoch > 0) {
                     const liveRound = await contract.rounds(liveEpoch);
@@ -600,9 +600,6 @@
     }
     
     document.getElementById('next-conf').innerText = (prediction === "SKIP" ? "SKIP" : confidence);
-    betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
-        }
-    
     betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
         }
 
