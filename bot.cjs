@@ -8,19 +8,6 @@ const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function updateMarketStats(rsi, macd, price) {
-    const { error } = await supabaseClient
-        .from('market_stats')
-        .upsert([{ 
-            id: 1, 
-            rsi: rsi, 
-            macd: macd, 
-            price: price,
-            updated_at: new Date().toISOString() 
-        }]);
-    if (error) console.error("Error updating stats:", error);
-}
-
 const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
 const ABI = [
     "function currentEpoch() view returns (uint256)", 
@@ -258,6 +245,20 @@ async function generatePrediction(targetEpoch) {
         console.error("Brain Failed:", e);
     }
 }
+
+async function updateMarketStats(rsi, macd, price) {
+    const { error } = await supabaseClient
+        .from('market_stats')
+        .upsert([{ 
+            id: 1, 
+            rsi: rsi, 
+            macd: macd, 
+            price: price,
+            updated_at: new Date().toISOString() 
+        }]);
+    if (error) console.error("Error updating stats:", error);
+}
+
 async function verifyResult(epochToCheck) {
     try {
         const round = await contract.rounds(epochToCheck);
