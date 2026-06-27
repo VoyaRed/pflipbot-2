@@ -348,30 +348,44 @@
         }
 
         async function checkRound() {
-            try {
-                const currentEpoch = (await contract.currentEpoch()).toNumber(); 
-                const nextEpoch = currentEpoch; 
-                const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
-                const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
+    try {
+        const currentEpoch = (await contract.currentEpoch()).toNumber(); 
+        const nextEpoch = currentEpoch; 
+        const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
+        const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
 
-                let expiredData = null;
-                let expiredRound = null;
-                
-                document.getElementById('next-epoch').innerText = `#${nextEpoch}`;
-                if (liveEpoch > 0) document.getElementById('live-epoch').innerText = `#${liveEpoch}`;
-                if (expiredEpoch > 0) {
-                const expiredRound = await contract.rounds(expiredEpoch);
-                const expiredData = getPredictionData(expiredEpoch);
-                
-                // ALL your code that uses expiredData must be inside these curly braces:
+        // 1. Declare variables at the top
+        let expiredData = null;
+        let expiredRound = null;
+        
+        document.getElementById('next-epoch').innerText = `#${nextEpoch}`;
+        if (liveEpoch > 0) document.getElementById('live-epoch').innerText = `#${liveEpoch}`;
+
+        // 2. Assign values WITHOUT 'const' or 'let'
+        if (expiredEpoch > 0) {
+            expiredRound = await contract.rounds(expiredEpoch);
+            expiredData = getPredictionData(expiredEpoch);
+            
+            // 3. Keep all logic using these variables inside these braces
+            if (expiredData) {
                 const prevBetEl = document.getElementById('prev-bet');
                 // ... rest of your existing logic for expired card ...
+                
+                // Example of logic that needs to be inside:
+                if (expiredData.pred === 'SKIP') {
+                     // logic here
                 }
+            }
+        }
 
-                // --- LIVE CARD UPDATE ---
-                const liveData = getPredictionData(liveEpoch);
-                const liveBetEl = document.getElementById('live-bet');
-                const liveBetPriceEl = document.getElementById('live-bet-price');
+        // --- LIVE CARD UPDATE ---
+        const liveData = getPredictionData(liveEpoch);
+        const liveBetEl = document.getElementById('live-bet');
+        const liveBetPriceEl = document.getElementById('live-bet-price');
+        
+        // ... rest of the function
+    } catch(e) { console.error("CheckRound Error:", e); }
+}
 
         if (liveData) {
                 if (liveData.pred === "SKIP") {
