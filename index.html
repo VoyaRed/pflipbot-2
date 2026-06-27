@@ -11,28 +11,86 @@
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root { 
-            /* Birthday Cake Modern Theme */
-            --bg: #fff0f5; /* Soft pink/cream background */
-            --panel: #ffffff; /* White frosting panels */
-            --up: #31d0aa; /* Keep standard up green */
-            --down: #ed4b9e; /* Keep standard down pink/red */
-            --text: #4a4a4a; /* Sleek dark grey text */
+            /* Light Mode: Strawberry Vanilla Cake */
+            --bg: #fff0f5; 
+            --panel: #ffffff; 
+            --up: #31d0aa; 
+            --down: #ed4b9e; 
+            --text: #4a4a4a; 
             --subtext: #8f90b0;
-            --primary: #ff6b6b; /* Cherry accent */
+            --primary: #ff6b6b; 
             --primary-glow: rgba(255, 107, 107, 0.5);
-            --accent: #ffb347; /* Soft orange/yellow */
+            --accent: #ffb347; 
+            --border: #eee;
+            --price-bg: #fafafa;
+            --header-bg: #f0f0f0;
+            --pattern-1: #ffb347;
+            --pattern-2: #ff6b6b;
+        }
+
+        /* Dark Mode: Dark Chocolate Cake */
+        body.dark-mode {
+            --bg: #1a0f14; 
+            --panel: #2d1b24; 
+            --text: #fce4ec; 
+            --subtext: #b39baf; 
+            --primary: #ff4757; 
+            --primary-glow: rgba(255, 71, 87, 0.5);
+            --accent: #ff9f43; 
+            --border: #4a2c3a;
+            --price-bg: #24151d;
+            --header-bg: #38222d;
+            --pattern-1: rgba(255, 159, 67, 0.15);
+            --pattern-2: rgba(255, 71, 87, 0.15);
         }
         
         body { 
             background: var(--bg); 
-            background-image: radial-gradient(#ffb347 1px, transparent 1px), radial-gradient(#ff6b6b 1px, transparent 1px);
+            background-image: radial-gradient(var(--pattern-1) 1px, transparent 1px), radial-gradient(var(--pattern-2) 1px, transparent 1px);
             background-size: 40px 40px;
             background-position: 0 0, 20px 20px;
             color: var(--text); 
             font-family: 'Kanit', sans-serif; 
             margin: 0; 
             padding: 20px; 
-            transition: filter 0.5s ease;
+            transition: background-color 0.5s ease, color 0.5s ease, filter 0.5s ease;
+        }
+
+        /* Top Navigation Area */
+        .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .title {
+            margin: 0;
+            font-weight: 800;
+            font-size: 2rem;
+            color: var(--primary);
+            text-shadow: 2px 2px 0px rgba(0,0,0,0.05);
+        }
+
+        .theme-btn {
+            background: var(--panel);
+            color: var(--text);
+            border: 2px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-family: 'Kanit', sans-serif;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        .theme-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            border-color: var(--primary);
         }
 
         /* Loss Effect Classes */
@@ -55,7 +113,7 @@
             filter: grayscale(80%) sepia(20%) hue-rotate(-50deg);
         }
 
-        .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 24px rgba(255, 107, 107, 0.15); border: 4px solid var(--panel); }
+        .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); border: 4px solid var(--panel); transition: border-color 0.5s ease; }
         
         .rounds-container { display: flex; justify-content: center; gap: 24px; margin-bottom: 40px; flex-wrap: wrap; }
         
@@ -67,17 +125,17 @@
             display: flex; 
             flex-direction: column; 
             overflow: hidden;
-            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.05);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.5s ease;
             border: 2px solid transparent;
         }
-        .card:hover { transform: translateY(-8px); box-shadow: 0 15px 30px rgba(255, 107, 107, 0.2); }
+        .card:hover { transform: translateY(-8px); box-shadow: 0 15px 30px var(--primary-glow); }
         
         .card-header { padding: 15px 20px; font-weight: bold; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; letter-spacing: 1px;}
         .card-body { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; flex-grow: 1; }
         
-        .expired { opacity: 0.85; border: 2px solid #e0e0e0; }
-        .expired .card-header { background: #f0f0f0; color: var(--subtext); }
+        .expired { opacity: 0.85; border: 2px solid var(--border); }
+        .expired .card-header { background: var(--header-bg); color: var(--subtext); transition: background-color 0.5s ease; }
         
         @keyframes pulseGlow {
             0% { box-shadow: 0 0 0 0 var(--primary-glow); }
@@ -95,24 +153,25 @@
             text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.1);
             transition: all 0.3s ease;
         }
-        .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        .pred-waiting { background: #f4f4f4; color: var(--subtext); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.05); font-size: 1.2rem; }
+        .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .pred-waiting { background: var(--price-bg); color: var(--subtext); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.05); font-size: 1.2rem; border: 1px solid var(--border); }
 
         .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; margin-bottom: 5px; color: var(--text); }
         
-        .progress-bg { background: #f0f0f0; border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; }
+        .progress-bg { background: var(--header-bg); border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; transition: background-color 0.5s ease; }
         .progress-fill { background: linear-gradient(90deg, var(--accent), var(--primary)); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
         
         .price-box {
-            background: #fafafa;
+            background: var(--price-bg);
             border-radius: 16px;
             padding: 15px;
             width: 100%;
             box-sizing: border-box;
             text-align: left;
-            border: 1px solid #eee;
+            border: 1px solid var(--border);
             margin-top: auto;
+            transition: background-color 0.5s ease, border-color 0.5s ease;
         }
         .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
         .main-price { font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; transition: color 0.3s ease; }
@@ -123,19 +182,55 @@
         .price-row span:first-child { color: var(--subtext); font-weight: 600; }
         .price-row span:last-child { font-weight: bold; color: var(--text); }
 
-        .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); transition: background-color 0.5s ease; }
         
         @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-        .ledger-item { animation: slideIn 0.4s ease-out forwards; margin-bottom: 8px; background: #fafafa; border: 1px solid #eee; padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; color: var(--text); }
-        .confidence-tag { font-size: 0.85rem; background: rgba(255, 107, 107, 0.1); padding: 4px 8px; border-radius: 6px; color: var(--primary); font-weight: bold;}
+        .ledger-item { animation: slideIn 0.4s ease-out forwards; margin-bottom: 8px; background: var(--price-bg); border: 1px solid var(--border); padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; color: var(--text); transition: background-color 0.5s ease, border-color 0.5s ease; }
+        .confidence-tag { font-size: 0.85rem; background: var(--primary-glow); padding: 4px 8px; border-radius: 6px; color: var(--text); font-weight: bold;}
         .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 6px; min-height: 1.2em; font-weight: 600; }
         
-        /* Celebration Animation Overlay */
-        .win-glow { animation: pulseGlow 1s ease-out; }
+        /* Mobile Responsiveness */
+        @media (max-width: 1024px) {
+            .rounds-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .card {
+                width: 100%;
+                max-width: 450px; /* Limits width on tablets so it doesn't look stretched */
+            }
+            .live {
+                transform: scale(1);
+            }
+            .live:hover { 
+                transform: translateY(-4px); 
+            }
+            .chart-box {
+                height: 350px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .top-nav { flex-direction: column; text-align: center; }
+            .chart-box { height: 250px; margin-bottom: 20px; }
+            .card-header { font-size: 1rem; padding: 12px 15px; }
+            .card-body { padding: 15px; }
+            .prediction-badge { font-size: 1.2rem; padding: 8px 10px; }
+            .main-price { font-size: 1.4rem; }
+            .ledger-box { padding: 15px; }
+            .ledger-item { flex-direction: column; gap: 8px; text-align: center; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        
+        <div class="top-nav">
+            <h1 class="title">UpsideDownCake 🍰</h1>
+            <button id="theme-toggle" class="theme-btn">🌙 Dark Chocolate</button>
+        </div>
+
         <div id="tv-container" class="chart-box"></div>
         
         <div class="rounds-container">
@@ -231,6 +326,41 @@
     </div>
 
     <script>
+        // --- THEME TOGGLE LOGIC ---
+        const themeBtn = document.getElementById('theme-toggle');
+        const currentTheme = localStorage.getItem('cakeTheme') || 'light';
+        
+        if (currentTheme === 'dark') {
+            document.body.classList.add('dark-mode');
+            themeBtn.innerText = '☀️ Strawberry Vanilla';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            
+            localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
+            themeBtn.innerText = isDark ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
+            
+            // Re-render TradingView widget based on theme
+            initTradingView();
+        });
+
+        function initTradingView() {
+            const isDark = document.body.classList.contains('dark-mode');
+            document.getElementById('tv-container').innerHTML = ''; // Clear existing
+            new TradingView.widget({ 
+                "container_id": "tv-container", 
+                "symbol": "BINANCE:BNBUSD", 
+                "interval": "5", 
+                "theme": isDark ? "dark" : "light", 
+                "autosize": true, 
+                "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] 
+            });
+        }
+
+
+        // --- BOT LOGIC ---
         const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -246,12 +376,6 @@
             "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
         ];
 
-        const RPC_URLS = [
-            "https://binance.llamarpc.com",
-            "https://bsc.meowrpc.com",
-            "https://bsc-rpc.publicnode.com"
-        ];
-        
         let provider, contract, oracleContract, lastEpoch = 0, timerInterval;
         let lastLockedPrice = 0;
 
@@ -316,8 +440,7 @@
         }
 
         async function init() {
-            // Updated TradingView Theme to light to match new cake theme
-            new TradingView.widget({ "container_id": "tv-container", "symbol": "BINANCE:BNBUSD", "interval": "5", "theme": "light", "autosize": true, "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] });
+            initTradingView(); // Call new modular function
             
             try {
                 const fastest = await findFastestRPC();
@@ -390,7 +513,7 @@
                     if (liveData.pred === "SKIP") {
                         const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
                         const displayConf = liveData.tryConf || "--%";
-                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
+                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: var(--subtext); line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
                         liveBetEl.className = "prediction-badge pred-waiting";
                     } else {
                         liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
@@ -448,7 +571,7 @@
                         if (expiredData.pred === 'SKIP') {
                             const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
                             const displayConf = expiredData.tryConf || "--%";
-                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
+                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: var(--subtext); line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
                             prevBetEl.className = "prediction-badge pred-waiting";
                         } else {
                             prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
@@ -509,7 +632,7 @@
                 if (!candles) throw new Error("API failed");
                 
                 const closes = candles.map(c => parseFloat(c[4])); 
-                const volumes = candles.map(c => parseFloat(c[5])); // New Volume Data
+                const volumes = candles.map(c => parseFloat(c[5])); 
                 const currentClose = closes[closes.length - 1];
 
                 // --- 1. CALCULATE RSI (14) ---
@@ -543,11 +666,11 @@
                     return emaArray;
                 };
 
-                // --- 3. CALCULATE EMA (9 & 21) [EXISTING LOGIC] ---
+                // --- 3. CALCULATE EMA (9 & 21) ---
                 const ema9 = calculateEMAArray(closes, 9)[closes.length - 1];
                 const ema21 = calculateEMAArray(closes, 21)[closes.length - 1];
 
-                // --- 4. CALCULATE MACD (12, 26, 9) [NEW LOGIC] ---
+                // --- 4. CALCULATE MACD (12, 26, 9) ---
                 const ema12Array = calculateEMAArray(closes, 12);
                 const ema26Array = calculateEMAArray(closes, 26);
                 const macdLineArray = ema12Array.map((v, i) => v - ema26Array[i]);
@@ -561,47 +684,40 @@
                 let macdColor = currentHist >= 0 ? "var(--up)" : "var(--down)";
                 document.getElementById('live-macd').innerHTML = `<span style="color: ${macdColor}">${currentHist.toFixed(3)}</span>`;
 
-                // --- 5. CALCULATE VOLUME SPIKES [NEW LOGIC] ---
+                // --- 5. CALCULATE VOLUME SPIKES ---
                 const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
                 const currentVol = volumes[volumes.length - 1];
-                const hasVolumeSpike = currentVol > (volSMA20 * 1.5); // 150% of average volume
+                const hasVolumeSpike = currentVol > (volSMA20 * 1.5); 
 
-                // --- 6. THE UPGRADED BRAIN LOGIC (STRICTER SCORING) ---
+                // --- 6. THE UPGRADED BRAIN LOGIC ---
                 let upScore = 0;
                 let downScore = 0;
                 
-                // Identify Chop using BB width
                 let bbWidth = (upperBB - lowerBB) / sma;
-                let isChoppy = bbWidth < 0.0015; // Adjusted chop threshold for BNB
+                let isChoppy = bbWidth < 0.0015; 
 
                 if (isChoppy) {
-                    // In a flat market, heavily rely on RSI extremes and volume breakouts
                     if (hasVolumeSpike) {
                         if (currentClose >= upperBB || rsi > 65) downScore += 4;
                         if (currentClose <= lowerBB || rsi < 35) upScore += 4;
                     }
-                    // Without volume, scores stay near zero in chop
                 } else {
-                    // Trend Identification (Existing EMAs)
                     if (ema9 > ema21) upScore += 1; 
                     if (ema9 < ema21) downScore += 1; 
                     
-                    // RSI Extremes
-                    if (rsi > 68) downScore += 2; // Stricter RSI
+                    if (rsi > 68) downScore += 2; 
                     if (rsi < 32) upScore += 2; 
 
-                    // Mean Reversion on BB
                     if (currentClose > upperBB) downScore += 2; 
                     if (currentClose < lowerBB) upScore += 2;
                     
-                    // MACD Momentum (NEW)
                     if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2;
                     if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
 
-                    // Volume Amplifier (NEW)
                     if (hasVolumeSpike) {
-                        if (currentClose > opens) upScore += 1; // Bullish engulf/spike
-                        if (currentClose < opens) downScore += 1; // Bearish dump
+                        const opens = parseFloat(candles[candles.length - 1][1]);
+                        if (currentClose > opens) upScore += 1; 
+                        if (currentClose < opens) downScore += 1; 
                     }
                 }
 
@@ -611,7 +727,6 @@
                 let tryScore = 0;
                 let tryPred = (currentMACD > currentSignal || rsi < 45) ? "UP" : "DOWN";
                 
-                // Strict Filter: Requires minimum score of 4 to enter a trade (was 2)
                 if (upScore > downScore && upScore >= 4) {
                     prediction = "UP";
                     winningScore = upScore;
@@ -623,7 +738,6 @@
                     tryScore = (tryPred === "UP") ? upScore : downScore;
                 }
                 
-                // Adjusted confidence scale for the new scoring system
                 let finalConfidence = Math.min(99.1, 50 + (winningScore * 8.5)).toFixed(1) + "%";
                 let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
 
@@ -645,7 +759,7 @@
 
             if (prediction === "SKIP") {
                 const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
-                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
+                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: var(--subtext); line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
                 predEl.className = "prediction-badge pred-waiting";
             } else {
                 predEl.innerText = `${prediction} (${confidence})`;
@@ -676,7 +790,6 @@
             }, 1000);
         }
 
-        // --- NEW FUN EFFECTS LOGIC ---
         function triggerWinEffect() {
             var duration = 3 * 1000;
             var animationEnd = Date.now() + duration;
@@ -714,7 +827,6 @@
                 if (botData) {
                     const isWin = (botData.pred === "SKIP") ? "SKIPPED" : ((botData.pred === actualResult) ? "WIN" : "LOSS");
                     
-                    // Trigger Theme Effects
                     if (isWin === "WIN") {
                         triggerWinEffect();
                     } else if (isWin === "LOSS") {
