@@ -465,7 +465,7 @@ async function runLoop() {
                 }
                 if (!candles) throw new Error("API failed");
                 
-                const closes = candles.map(c => parseFloat(c));
+                const closes = candles.map(c => parseFloat(c[4])); 
                 const currentClose = closes[closes.length - 1];
 
                 // --- 1. CALCULATE RSI (14) ---
@@ -474,8 +474,18 @@ async function runLoop() {
                     const diff = closes[i] - closes[i-1];
                     if (diff > 0) gains += diff; else losses += Math.abs(diff);
                 }
-                const avgGain = gains / 14; const avgLoss = losses / 14;
-                const rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
+
+                const avgGain = gains / 14; 
+                const avgLoss = losses / 14;
+
+                // Fix 2: Prevent division by zero if losses are 0
+                let rsi = 100;
+                if (avgLoss !== 0) {
+                    rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
+                } else if (avgGain === 0) {
+                    rsi = 50; // Market is completely flat
+                }
+
                 document.getElementById('live-rsi').innerText = rsi.toFixed(2);
 
                 // --- 2. CALCULATE BOLLINGER BANDS (20, 2) ---
