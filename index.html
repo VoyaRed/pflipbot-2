@@ -613,5 +613,75 @@
 
         window.onload = init;
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+    // 1. Initialize Supabase
+    const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // 2. Fetch and update the dashboard
+    async function updateDashboard() {
+        try {
+            // --- FETCH MARKET STATS (RSI & MACD) ---
+            const { data: statsData, error: statsError } = await supabase
+                .from('market_stats')
+                .select('rsi, macd')
+                .eq('id', 1)
+                .single();
+
+            if (statsData) {
+                // Target the specific IDs from your HTML
+                document.getElementById('live-rsi').innerText = statsData.rsi.toFixed(2);
+                document.getElementById('live-macd').innerText = statsData.macd.toFixed(4);
+            }
+
+            // --- FETCH LATEST PREDICTION ---
+            const { data: predData, error: predError } = await supabase
+                .from('prediction_logs')
+                .select('epoch_id, predicted_side, confidence')
+                .order('epoch_id', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (predData) {
+                // Update the Epoch Number
+                document.getElementById('next-epoch').innerText = `#${predData.epoch_id}`;
+                
+                // Update the Confidence text
+                document.getElementById('next-conf').innerText = predData.confidence || 'Analyzed';
+                
+                // Update the Prediction Badge Text
+                const badge = document.getElementById('bot-prediction');
+                badge.innerText = predData.predicted_side;
+                
+                // Strip the default 'pred-waiting' class so we can apply custom colors
+                badge.className = 'prediction-badge'; 
+                
+                // Apply dynamic colors based on the market direction
+                if (predData.predicted_side === 'UP') {
+                    badge.style.backgroundColor = '#32d993'; // Bullish Green
+                    badge.style.color = '#1a1a1a'; // Dark text for contrast
+                } else if (predData.predicted_side === 'DOWN') {
+                    badge.style.backgroundColor = '#ff5353'; // Bearish Red
+                    badge.style.color = '#ffffff'; 
+                } else {
+                    badge.style.backgroundColor = '#4a4a4a'; // Chop/Skip Grey
+                    badge.style.color = '#ffffff';
+                }
+            }
+
+        } catch (err) {
+            console.error("Dashboard update failed:", err);
+        }
+    }
+
+    // 3. Run immediately on load
+    updateDashboard();
+
+    // 4. Refresh the data every 5 seconds
+    setInterval(updateDashboard, 5000);
+</script>
 </body>
 </html>
