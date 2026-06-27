@@ -431,11 +431,16 @@
         const rsiEl = document.getElementById('live-rsi');
         if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
 
-        // 2. Update MACD
+        // 2. Update MACD (With Safety Check)
         const macdEl = document.getElementById('live-macd');
-        if (macdEl) {
+        
+        // Only run the math if data.macd actually exists and is a number
+        if (macdEl && data.macd !== null && data.macd !== undefined) {
             let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)";
             macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
+        } else if (macdEl) {
+            // Fallback if the database is empty or sending null
+            macdEl.innerText = "Waiting...";
         }
         
         // Note: Price update removed here because Chainlink handles it!
