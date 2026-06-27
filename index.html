@@ -225,7 +225,7 @@ async function fetchOraclePrice() {
     } catch (error) {
         console.error("Error fetching Oracle price:", error);
     }
-        
+}   
 // Poll the oracle every 3 seconds to stay updated
 setInterval(fetchOraclePrice, 3000);
 fetchOraclePrice(); // Initial call
