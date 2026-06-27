@@ -549,10 +549,18 @@
                     document.getElementById('prev-conf').innerText = log.confidence;
                     
                     const resEl = document.getElementById('prev-result');
-                    resEl.innerText = log.result;
-                    if (log.result === 'WIN') resEl.className = 'prediction-badge pred-up';
-                    else if (log.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
-                    else resEl.className = 'prediction-badge pred-waiting';
+                        if (resEl) {
+                        resEl.innerText = log.result;
+                        if (log.result === 'WIN') resEl.className = 'prediction-badge pred-up';
+                        else if (log.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
+                        else resEl.className = 'prediction-badge pred-waiting';
+                    }
+                    
+                    const closeEl = document.getElementById('prev-close-price');
+                    if (closeEl && log.close_price) {
+                        closeEl.innerText = `$${log.close_price}`;
+                        // Add null checks for your other properties too
+                    }
                 }
 
                 // --- LEDGER & FX ---
