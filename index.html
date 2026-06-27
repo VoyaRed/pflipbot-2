@@ -487,10 +487,15 @@
                     }
                 }
 
-                // 3. Sync with Bot Mind & Calculate Results Dynamically
+                // 2. Refresh Visual Indicators
+                await updateMarketVisualsFromDB();
+
+                // 3. Sync with Bot Mind (Supabase)
                 const { data } = await supabaseClient.from('prediction_logs')
                     .select('*').order('epoch_id', { ascending: false }).limit(20);
+                if (data) renderDashboardFromDB(data, currentEpoch, liveEpoch, prevEpoch);
 
+                } catch (error) { console.warn("Sync Error:", error); }
                 if (data) {
                     for (let log of data) {
                         // Only calculate results for rounds that are officially expired
