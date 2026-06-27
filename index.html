@@ -503,102 +503,60 @@
         function renderDashboardFromDB(logs, nextEpoch, liveEpoch, prevEpoch) {
             document.getElementById('ledger').innerHTML = ''; // Clear ledger for redraw
             
-            // --- WIN RATE CALCULATION ---
-            // 1. Filter out any rounds that are still PENDING
-            // Strictly permit only official active results, ignoring old/temp text formats
+            // 1. Clean the logs to only look at official resolved statuses
             const officialStatuses = ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'];
             const resolvedLogs = logs.filter(log => officialStatuses.includes(log.result));
             
-            // 2. Slice the 15 most recent completed rounds
-            const recent15 = resolvedLogs.slice(0, 15);
-            
-            // 3. Count wins (Normal WINs + SKIP/UP adjustments)
-            let wins = 0;
-            recent15.forEach(log => {
+            // --- 2. MIXED MARKET WIN RATE (Includes 50% Chops) ---
+            const recent15Mixed = resolvedLogs.slice(0, 15);
+            let mixedWins = 0;
+            recent15Mixed.forEach(log => {
                 if (log.result === 'WIN' || log.result === 'SKIP/UP') {
-                    wins++;
+                    mixedWins++;
                 }
             });
+            const mixedWinRate = recent15Mixed.length > 0 ? ((mixedWins / recent15Mixed.length) * 100).toFixed(1) : "0.0";
             
-            // 4. Calculate the rolling percentage
-            const winRate = recent15.length > 0 ? ((wins / recent15.length) * 100).toFixed(1) : "0.0";
+            // --- 3. TREND MARKET WIN RATE (Strictly >50% Confidence) ---
+            const trendLogs = resolvedLogs.filter(log => {
+                // Parse the first number found in the confidence string (e.g. "50.0%" or "84.0%")
+                const match = log.confidence.match(/(\d+(?:\.\d+)?)/);
+                if (match) {
+                    const confidenceValue = parseFloat(match[1]);
+                    return confidenceValue > 50.0; // Filter out anything that is exactly 50%
+                }
+                return true; 
+            });
+            const recent15Trend = trendLogs.slice(0, 15);
+            let trendWins = 0;
+            recent15Trend.forEach(log => {
+                if (log.result === 'WIN' || log.result === 'SKIP/UP') {
+                    trendWins++;
+                }
+            });
+            const trendWinRate = recent15Trend.length > 0 ? ((trendWins / recent15Trend.length) * 100).toFixed(1) : "0.0";
             
-            // 5. Inject the percentage badge dynamically into the ledger header
+            // --- 4. RENDER BOTH BADGES SIDE-BY-SIDE IN THE HEADER ---
             const ledgerHeader = document.querySelector('.ledger-box h3');
             if (ledgerHeader) {
-                ledgerHeader.innerHTML = `UpsideDownCake Execution Ledger 🍰 
-                    <span style="float: right; font-size: 0.95rem; background: var(--up); color: white; padding: 4px 12px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-                        Win Rate (Last ${recent15.length}): ${winRate}%
-                    </span>`;
+                ledgerHeader.style.display = 'flex';
+                ledgerHeader.style.justifyContent = 'space-between';
+                ledgerHeader.style.alignItems = 'center';
+                ledgerHeader.style.flexWrap = 'wrap';
+                ledgerHeader.style.gap = '10px';
+                
+                ledgerHeader.innerHTML = `
+                    <span>UpsideDownCake Execution Ledger 🍰</span>
+                    <div style="display: flex; gap: 8px; font-size: 0.85rem; font-weight: 600;">
+                        <span style="background: #ffb347; color: white; padding: 5px 12px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                            Mixed Market (incl. 50% Chops): ${mixedWinRate}%
+                        </span>
+                        <span style="background: var(--up); color: white; padding: 5px 12px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                            Trend Market (>50%): ${trendWinRate}%
+                        </span>
+                    </div>
+                `;
             }
-            // -----------------------------
-
-            let hasPendingNext = false;
-
-            logs.forEach(log => {
-                const sideCls = log.predicted_side === 'UP' ? 'pred-up' : (log.predicted_side === 'DOWN' ? 'pred-down' : 'pred-waiting');
-                const isSkip = log.predicted_side.includes('SKIP');
-
-                // --- NEXT CARD ---
-                if (log.epoch_id === nextEpoch) {
-                    hasPendingNext = true;
-                    const el = document.getElementById('bot-prediction');
-                    el.innerText = isSkip ? "SKIP" : log.predicted_side; 
-                    el.className = `prediction-badge ${sideCls}`;
-                    document.getElementById('next-conf').innerText = log.confidence;
-                }
-
-                // --- LIVE CARD ---
-                if (log.epoch_id === liveEpoch) {
-                    const el = document.getElementById('live-bet');
-                    el.innerText = isSkip ? "SKIP" : log.predicted_side; 
-                    el.className = `prediction-badge ${sideCls}`;
-                    document.getElementById('live-conf').innerText = log.confidence;
-                }
-
-                // --- PREV CARD ---
-                if (log.epoch_id === prevEpoch) {
-                    const el = document.getElementById('prev-bet');
-                    el.innerText = isSkip ? "SKIP" : log.predicted_side; 
-                    el.className = `prediction-badge ${sideCls}`;
-                    document.getElementById('prev-conf').innerText = log.confidence;
-                    
-                    const resEl = document.getElementById('prev-result');
-                    if (resEl) {
-                        resEl.innerText = log.result;
-                        if (log.result === 'WIN' || log.result === 'SKIP/UP') resEl.className = 'prediction-badge pred-up';
-                        else if (log.result === 'LOSS' || log.result === 'SKIP/DOWN') resEl.className = 'prediction-badge pred-down';
-                        else resEl.className = 'prediction-badge pred-waiting';
-                    }
-                    
-                    const closeEl = document.getElementById('prev-close-price');
-                    if (closeEl && log.close_price) {
-                        closeEl.innerText = `$${log.close_price}`;
-                    }
-                }
-
-                // --- LEDGER & FX ---
-                if (log.result !== 'PENDING') {
-                    renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence);
-                    
-                    if (!notifiedEpochs.has(log.epoch_id)) {
-                        if (log.result === 'WIN' || log.result === 'SKIP/UP') triggerWinEffect();
-                        if (log.result === 'LOSS' || log.result === 'SKIP/DOWN') { 
-                            document.body.classList.add('loss-shake'); 
-                            setTimeout(() => document.body.classList.remove('loss-shake'), 1000); 
-                        }
-                        notifiedEpochs.add(log.epoch_id);
-                    }
-                }
-            });
-
-            // If bot hasn't pushed a prediction yet, show Waiting
-            if (!hasPendingNext) {
-                document.getElementById('bot-prediction').innerText = "Waiting for 75s";
-                document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
-                document.getElementById('next-conf').innerText = "Analyzing...";
-            }
-        }
         
         function renderLedgerRow(epoch, predicted, result, confidence) {
             const ledger = document.getElementById('ledger');
