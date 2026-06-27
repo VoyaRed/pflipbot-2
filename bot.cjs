@@ -146,9 +146,13 @@ async function generatePrediction(targetEpoch) {
 
         if (!candles) throw new Error("ScrapingBee API failed after 3 retries");
 
+        const opens = candles.map(c => parseFloat(c[1]));
+        const highs = candles.map(c => parseFloat(c[2]));
+        const lows = candles.map(c => parseFloat(c[3]));
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
+
         
         // RSI
         let gains = 0, losses = 0;
@@ -223,42 +227,80 @@ async function generatePrediction(targetEpoch) {
         if (recentUps >= 3) upScore += 1;
         if (recentUps === 5) upScore += 1.5; // Strong sustained trend
         if (recentDowns >= 3) downScore += 1;
-        if (recentDowns === 5) downScore += 1.5;
+                if (recentDowns === 5) downScore += 1.5;
 
-        if (isChoppy) {
-            if (hasVolumeSpike) {
-                if (currentClose >= upperBB || rsi > 65) downScore += 4;
-                if (currentClose <= lowerBB || rsi < 35) upScore += 4;
-            }
+        // --- 1. EXTENDED CANDLE DATA (Needed for Wicks) ---
+        const opens = candles.map(c => parseFloat(c[1]));
+        const highs = candles.map(c => parseFloat(c[2]));
+        const lows = candles.map(c => parseFloat(c[3]));
+        
+        // --- 2. PRICE ACTION (Wick Analysis) ---
+        const prevOpen = opens[opens.length - 2];
+        const prevClose = closes[closes.length - 2];
+        const prevHigh = highs[highs.length - 2];
+        const prevLow = lows[lows.length - 2];
+        
+        const upperWick = prevHigh - Math.max(prevOpen, prevClose);
+        const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
+        const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
+
+        // --- 3. MOMENTUM (Rate of Change) ---
+        const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
+
+        // --- 4. VOLATILITY (Average True Range Proxy) ---
+        let trSum = 0;
+        for (let i = closes.length - 14; i < closes.length; i++) {
+            const highLow = highs[i] - lows[i];
+            const highClose = Math.abs(highs[i] - closes[i-1]);
+            const lowClose = Math.abs(lows[i] - closes[i-1]);
+            trSum += Math.max(highLow, highClose, lowClose);
+        }
+        const atrPercentage = ((trSum / 14) / currentClose) * 100;
+
+        // Existing Choppiness check
+        let bbWidth = (upperBB - lowerBB) / sma;
+        let isChoppy = bbWidth < 0.0015;
+
+        // --- 5. THE DECISION ENGINE ---
+        if (atrPercentage < 0.06 || isChoppy) {
+            // Market is flat, highly unpredictable on 5m. Skip it.
+            upScore = 0; downScore = 0;
         } else {
-            if (ema9 > ema21) upScore += 1;
-            if (ema9 < ema21) downScore += 1; 
-            if (rsi > 68) downScore += 2;
-            if (rsi < 32) upScore += 2; 
-            if (currentClose > upperBB) downScore += 2;
-            if (currentClose < lowerBB) upScore += 2;
+            // Trend Alignment (MACD & EMA)
+            if (ema9 > ema21) upScore += 1.5;
+            if (ema9 < ema21) downScore += 1.5;
             if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2;
             if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
-            if (hasVolumeSpike) {
-                const opens = parseFloat(candles[candles.length - 1][1]);
-                if (currentClose > opens) upScore += 1; 
-                if (currentClose < opens) downScore += 1;
-            }
+
+            // Momentum (ROC Velocity)
+            if (roc3 > 0.15) upScore += 2.5; 
+            if (roc3 < -0.15) downScore += 2.5; 
+
+            // Price Action Reversals (Wicks)
+            if (upperWick > bodySize * 2) downScore += 3.5; // Huge rejection from top
+            if (lowerWick > bodySize * 2) upScore += 3.5; // Huge rejection from bottom
+
+            // Snap-Back Reversals (Extreme RSI + BB)
+            if (currentClose > upperBB && rsi > 72) downScore += 4;
+            if (currentClose < lowerBB && rsi < 28) upScore += 4;
         }
 
         let prediction = "NONE";
         let winningScore = 0, tryScore = 0;
-        let tryPred = (currentMACD > currentSignal || rsi < 45) ? "UP" : "DOWN";
+        let tryPred = (upScore > downScore) ? "UP" : "DOWN";
         
-        if (upScore > downScore && upScore >= 4) { 
+        // The Confidence Threshold
+        const CONFIDENCE_THRESHOLD = 5.5; 
+
+        if (upScore > downScore && upScore >= CONFIDENCE_THRESHOLD) { 
             prediction = "UP";
             winningScore = upScore;
-        } else if (downScore > upScore && downScore >= 4) { 
+        } else if (downScore > upScore && downScore >= CONFIDENCE_THRESHOLD) { 
             prediction = "DOWN";
             winningScore = downScore; 
         } else { 
             prediction = "SKIP";
-            tryScore = (tryPred === "UP") ? upScore : downScore; 
+            tryScore = Math.max(upScore, downScore); 
         }
         
         let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
@@ -266,20 +308,21 @@ async function generatePrediction(targetEpoch) {
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
         let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
-        if (numericConfidence >= 75.0) {
+        // Webhook Alert (Fixed the variables so it doesn't crash)
+        if (numericConfidence >= 75.0 && prediction !== "SKIP") {
             const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
             const payload = {
                 username: "Cake Alert Bot 🍰",
-                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${currentEpoch}\nPrediction: **${prediction.side}**\nConfidence: **${prediction.confidence}%**`
+                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${prediction}**\nConfidence: **${displayConf}**`
             };
 
+            fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(err => console.error("Failed to send webhook:", err));
+        }
 
-    fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    }).catch(err => console.error("Failed to send webhook:", err));
-}
 
         // --- NEW: CALCULATE "LATER" LIKELIHOOD ---
         // Uses EMA distance, RSI divergence, and recent blockchain trend
