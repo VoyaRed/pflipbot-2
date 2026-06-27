@@ -217,7 +217,6 @@
             if (!oracleContract) return;
             try {
                 const data = await oracleContract.latestRoundData();
-                // Subtracted 1 here as requested
                 const price = (data.answer / 1e8); 
                 
                 const el = document.getElementById('live-last-price');
@@ -231,24 +230,6 @@
                 console.error("Error fetching Oracle price:", error);
             }
         }
-
-        // COMMENTED OUT WEBSOCKET TEMPORARILY
-        /*
-        function connectWebSocket() {
-            const ws = new WebSocket('wss://stream.binance.com:9443/ws/bnbusdt@ticker');
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const livePrice = parseFloat(data.c) - 1; 
-                
-                const el = document.getElementById('live-last-price');
-                if (el && lastLockedPrice > 0) {
-                    el.innerText = `$${livePrice.toFixed(4)}`;
-                    el.className = livePrice >= lastLockedPrice ? 'main-price up' : 'main-price down';
-                }
-            };
-            ws.onclose = () => setTimeout(connectWebSocket, 5000); 
-        }
-        */
 
         async function fetchKlines() {
             const PROXY = "https://corsproxy.io/?"; 
@@ -302,7 +283,6 @@
                 
                 oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
                 
-                // Chainlink polling is active as the main feed
                 setInterval(fetchOraclePrice, 3000);
                 fetchOraclePrice(); 
                 
@@ -312,7 +292,6 @@
                 return; 
             }
             
-            // connectWebSocket();  <-- Commented out
             await loadLedgerHistory();
             runLoop();
         }
@@ -347,45 +326,35 @@
             throw new Error("All RPC nodes failed.");
         }
 
-async function checkRound() {
-    try {
-        const currentEpoch = (await contract.currentEpoch()).toNumber();
-        const nextEpoch = currentEpoch;
-        const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
-        const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
-        // 1. Declare variables at the top
-        document.getElementById("next-epoch").innerText = `#${nextEpoch}`;
-        if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
-        // 2. Assign values WITHOUT 'const' or 'let'
-        if (expiredEpoch > 0) {
-            expiredRound = await contract.rounds(expiredEpoch);
-            expiredData = getPredictionData(expiredEpoch);
-            // 3. Keep all logic using these variables inside these braces
-            if (expiredData) {
-                const prevBetEl = document.getElementById("prev-bet");
-                // ... rest of your existing logic for expired card ...
-                // Example of logic that needs to be inside:
-                if (expiredData.pred === "SKIP") {
-                    // logic here
-                }
-            }
-        }
-        // --- LIVE CARD UPDATE ---
-        const liveData = getPredictionData(liveEpoch);
-        const liveBetEl = document.getElementById("live-bet");
-        const liveBetPriceEl = document.getElementById("live-bet-price");
-        if (liveData) {
-                if (liveData.pred === "SKIP") {
-                const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                const displayConf = liveData.tryConf || "--%";
-                liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
-                liveBetEl.className = "prediction-badge pred-waiting";
-                } else {
-                    liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
-                    liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
+        async function checkRound() {
+            try {
+                const currentEpoch = (await contract.currentEpoch()).toNumber();
+                const nextEpoch = currentEpoch;
+                const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
+                const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
+
+                // --- UI HEADER UPDATES ---
+                document.getElementById("next-epoch").innerText = `#${nextEpoch}`;
+                if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
+                if (expiredEpoch > 0) document.getElementById("prev-epoch").innerText = `#${expiredEpoch}`;
+
+                // --- LIVE CARD UPDATE ---
+                const liveData = getPredictionData(liveEpoch);
+                const liveBetEl = document.getElementById("live-bet");
+                const liveBetPriceEl = document.getElementById("live-bet-price");
+                
+                if (liveData) {
+                    if (liveData.pred === "SKIP") {
+                        const tryColor = liveData.try === 'UP' ? 'var(--up)' : 'var(--down)';
+                        const displayConf = liveData.tryConf || "--%";
+                        liveBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${liveData.try} (${displayConf})</span>)</span>`;
+                        liveBetEl.className = "prediction-badge pred-waiting";
+                    } else {
+                        liveBetEl.innerText = `${liveData.pred} (${liveData.conf})`;
+                        liveBetEl.className = `prediction-badge ${liveData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                     }
-                document.getElementById('live-conf').innerText = (liveData.pred === "SKIP" ? "SKIP" : liveData.conf);
-                liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
+                    document.getElementById('live-conf').innerText = (liveData.pred === "SKIP" ? "SKIP" : liveData.conf);
+                    liveBetPriceEl.innerText = liveData.betPrice ? `Bot bet at: $${liveData.betPrice}` : "";
                 }
 
                 if (liveEpoch > 0) {
@@ -401,7 +370,6 @@ async function checkRound() {
                     const closeTimestamp = liveRound.closeTimestamp.toNumber();
                     startTimer(closeTimestamp);
                 }
-         }    
 
                 // --- NEXT CARD UPDATE ---
                 const nextRoundData = await contract.rounds(nextEpoch);
@@ -423,23 +391,31 @@ async function checkRound() {
                         document.getElementById('bot-bet-price').innerText = "";
                     }
                 } else {
-                    displayPrediction(nextData.pred, nextData.conf, nextData.try, nextData.betPrice);
+                    // FIX 3: Correctly map the parameters including tryConf
+                    displayPrediction(nextData.pred, nextData.conf, nextData.try, nextData.tryConf, nextData.betPrice);
                 }
 
                 // --- EXPIRED CARD UPDATE ---
-                if (expiredData) {
-                    if (expiredData.pred === 'SKIP') {
-                    const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
-                    const displayConf = expiredData.tryConf || "--%";
-                    prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
-                    prevBetEl.className = "prediction-badge pred-waiting";
-                    } else {
-                        prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
-                        prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
+                // FIX 2: Check if expiredEpoch exists BEFORE querying contract or handling its logic
+                if (expiredEpoch > 0) {
+                    const expiredRound = await contract.rounds(expiredEpoch);
+                    const expiredData = getPredictionData(expiredEpoch);
+                    const prevBetEl = document.getElementById("prev-bet");
+                    const prevBetPriceEl = document.getElementById("prev-bet-price"); // FIX 1: Defined Element
+
+                    if (expiredData) {
+                        if (expiredData.pred === 'SKIP') {
+                            const tryColor = expiredData.try === 'UP' ? 'var(--up)' : 'var(--down)';
+                            const displayConf = expiredData.tryConf || "--%";
+                            prevBetEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${expiredData.try} (${displayConf})</span>)</span>`;
+                            prevBetEl.className = "prediction-badge pred-waiting";
+                        } else {
+                            prevBetEl.innerText = `${expiredData.pred} (${expiredData.conf})`;
+                            prevBetEl.className = `prediction-badge ${expiredData.pred === 'UP' ? 'pred-up' : 'pred-down'}`;
                         }
-                document.getElementById('prev-conf').innerText = (expiredData.pred === "SKIP" ? "SKIP" : expiredData.conf);
-                prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
-                }
+                        document.getElementById('prev-conf').innerText = (expiredData.pred === "SKIP" ? "SKIP" : expiredData.conf);
+                        prevBetPriceEl.innerText = expiredData.betPrice ? `Bot bet at: $${expiredData.betPrice}` : "";
+                    }
 
                     const prevResultEl = document.getElementById('prev-result');
                     if (expiredRound.oracleCalled) {
@@ -456,7 +432,9 @@ async function checkRound() {
                         closeEl.className = `main-price ${actualResult === 'UP' ? 'up' : 'down'}`;
                         
                     } else {
-                        prevResultEl.innerText = "Resolving..."; prevResultEl.className = "prediction-badge pred-waiting";
+                        prevResultEl.innerText = "Resolving..."; 
+                        prevResultEl.className = "prediction-badge pred-waiting";
+                    }
                 }
 
                 if (currentEpoch > lastEpoch && lastEpoch !== 0) {
@@ -471,7 +449,6 @@ async function checkRound() {
             try {
                 const predOracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
                 const [, price] = await predOracleContract.latestRoundData();
-                // Subtracted 1 here as requested
                 const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8)) - 1; 
                 const currentBetPrice = oraclePrice.toFixed(4); 
 
@@ -574,8 +551,6 @@ async function checkRound() {
                     tryScore = (tryPred === "UP") ? upScore : downScore;
                 }
                 
-                // Deterministic calculation: Start at 50%, add 12% per point of conviction
-                // Cap at 98.5%
                 let finalConfidence = Math.min(98.5, 50 + (winningScore * 12)).toFixed(1) + "%";
                 let tryConf = Math.min(98.5, 50 + (tryScore * 12)).toFixed(1) + "%";
 
@@ -587,25 +562,25 @@ async function checkRound() {
                     const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
                     displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
-                    }   
+                }   
             } catch (e) { console.error("Brain Failed:", e); }
         }
 
         function displayPrediction(prediction, confidence, tryPred = null, tryConf = null, betPrice = null) {
-    const predEl = document.getElementById('bot-prediction');
-    const betPriceEl = document.getElementById('bot-bet-price');
+            const predEl = document.getElementById('bot-prediction');
+            const betPriceEl = document.getElementById('bot-bet-price');
 
-    if (prediction === "SKIP") {
-        const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
-        predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
-        predEl.className = "prediction-badge pred-waiting";
-    } else {
-        predEl.innerText = `${prediction} (${confidence})`;
-        predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
-    }
-    
-    document.getElementById('next-conf').innerText = (prediction === "SKIP" ? "SKIP" : confidence);
-    betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
+            if (prediction === "SKIP") {
+                const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
+                predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
+                predEl.className = "prediction-badge pred-waiting";
+            } else {
+                predEl.innerText = `${prediction} (${confidence})`;
+                predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
+            }
+            
+            document.getElementById('next-conf').innerText = (prediction === "SKIP" ? "SKIP" : confidence);
+            betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
         }
 
         function startTimer(targetTimestamp) {
