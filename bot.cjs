@@ -260,11 +260,12 @@ async function generatePrediction(targetEpoch) {
             tryScore = (tryPred === "UP") ? upScore : downScore; 
         }
         
-        let finalConfidence = Math.min(99.1, 50 + (winningScore * 8.5)).toFixed(1) + "%";
+        let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
+        let finalConfidence = numericConfidence.toFixed(1) + "%";
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
         let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
-        if (finalConfidence >= 75.0) {
+        if (numericConfidence >= 75.0) {
             const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
             const payload = {
                 username: "Cake Alert Bot 🍰",
