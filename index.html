@@ -403,6 +403,7 @@ async function checkRound() {
                     const closeTimestamp = liveRound.closeTimestamp.toNumber();
                     startTimer(closeTimestamp);
                 }
+         }    
 
                 // --- NEXT CARD UPDATE ---
                 const nextRoundData = await contract.rounds(nextEpoch);
