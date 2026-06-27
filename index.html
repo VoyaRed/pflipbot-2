@@ -355,6 +355,7 @@
                 const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
 
                 let expiredData = null;
+                let expiredRound = null;
                 
                 document.getElementById('next-epoch').innerText = `#${nextEpoch}`;
                 if (liveEpoch > 0) document.getElementById('live-epoch').innerText = `#${liveEpoch}`;
