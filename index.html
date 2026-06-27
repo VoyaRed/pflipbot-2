@@ -619,18 +619,7 @@
     // 2. Fetch and update the dashboard
     async function updateDashboard() {
         try {
-            // --- FETCH MARKET STATS (RSI & MACD) ---
-            const { data: statsData, error: statsError } = await supabaseClient
-                .from('market_stats')
-                .select('rsi, macd')
-                .eq('id', 1)
-                .maybeSingle()
-
-            if (statsData) {
-                // Target the specific IDs from your HTML
-                document.getElementById('live-rsi').innerText = statsData.rsi.toFixed(2);
-                document.getElementById('live-macd').innerText = statsData.macd.toFixed(4);
-            }
+            
 
             // --- FETCH LATEST PREDICTION ---
             const { data: predData, error: predError } = await supabaseClient
