@@ -276,7 +276,7 @@ async function verifyResult(epochToCheck) {
             
             let resultStatus;
             if (data.predicted_side === "SKIP") {
-                resultStatus = "SKIPPED_WOULD_HAVE_BEEN_" + actualResult; 
+                resultStatus = "SKIP/" + actualResult; 
             } else {
                 resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS";
             }
