@@ -505,7 +505,9 @@
             
             // --- WIN RATE CALCULATION ---
             // 1. Filter out any rounds that are still PENDING
-            const resolvedLogs = logs.filter(log => log.result !== 'PENDING');
+            // Strictly permit only official active results, ignoring old/temp text formats
+            const officialStatuses = ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'];
+            const resolvedLogs = logs.filter(log => officialStatuses.includes(log.result));
             
             // 2. Slice the 15 most recent completed rounds
             const recent15 = resolvedLogs.slice(0, 15);
