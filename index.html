@@ -356,7 +356,14 @@
                 
                 document.getElementById('next-epoch').innerText = `#${nextEpoch}`;
                 if (liveEpoch > 0) document.getElementById('live-epoch').innerText = `#${liveEpoch}`;
-                if (expiredEpoch > 0) document.getElementById('prev-epoch').innerText = `#${expiredEpoch}`;
+                if (expiredEpoch > 0) {
+                const expiredRound = await contract.rounds(expiredEpoch);
+                const expiredData = getPredictionData(expiredEpoch);
+                
+                // ALL your code that uses expiredData must be inside these curly braces:
+                const prevBetEl = document.getElementById('prev-bet');
+                // ... rest of your existing logic for expired card ...
+                }
 
                 // --- LIVE CARD UPDATE ---
                 const liveData = getPredictionData(liveEpoch);
@@ -545,14 +552,12 @@
                     if (currentClose < lowerBB) upScore += 2;
                 }
 
-               // --- 5. FINALIZE PREDICTION ---
+                // --- 5. FINALIZE PREDICTION ---
                 let prediction = "NONE";
-                
-                // Determine the winner and the winning score
                 let winningScore = 0;
                 let tryScore = 0;
                 let tryPred = (rsi < 50 || ema9 > ema21) ? "UP" : "DOWN";
-
+                
                 if (upScore > downScore && upScore >= 2) {
                     prediction = "UP";
                     winningScore = upScore;
@@ -561,8 +566,22 @@
                     winningScore = downScore;
                 } else {
                     prediction = "SKIP";
-                    // For the skip fallback, calculate the confidence of the "try" prediction
                     tryScore = (tryPred === "UP") ? upScore : downScore;
+                }
+                
+                let finalConfidence = Math.min(98.5, 50 + (winningScore * 12)).toFixed(1) + "%";
+                let tryConf = Math.min(98.5, 50 + (tryScore * 12)).toFixed(1) + "%";
+                
+                if (prediction === "SKIP") {
+                    const skipObject = { pred: "SKIP", conf: "Chop / Flat", try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
+                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(skipObject));
+                    displayPrediction("SKIP", "Chop / Flat", tryPred, tryConf, currentBetPrice);
+                } else {
+                    const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
+                    localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
+                    displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
+                }
+                    } catch (e) { console.error("Brain Failed:", e); }
                 }
 
                 // Deterministic calculation: Start at 50%, add 12% per point of conviction
@@ -588,15 +607,16 @@
 
     if (prediction === "SKIP") {
         const tryColor = tryPred === 'UP' ? 'var(--up)' : 'var(--down)';
-        const displayConf = tryConf || "--%";
-        predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${displayConf})</span>)</span>`;
+        predEl.innerHTML = `SKIP<br><span style="font-size: 0.75rem; color: #a1a1a1; line-height: 1;">(OR bet: <span style="color: ${tryColor}">${tryPred} (${tryConf})</span>)</span>`;
         predEl.className = "prediction-badge pred-waiting";
-        document.getElementById('next-conf').innerText = "SKIP";
     } else {
         predEl.innerText = `${prediction} (${confidence})`;
         predEl.className = `prediction-badge ${prediction === 'UP' ? 'pred-up' : 'pred-down'}`;
-        document.getElementById('next-conf').innerText = confidence;
     }
+    
+    document.getElementById('next-conf').innerText = (prediction === "SKIP" ? "SKIP" : confidence);
+    betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
+        }
     
     betPriceEl.innerText = betPrice ? `Bot bet at: $${betPrice}` : "";
         }
