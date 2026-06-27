@@ -263,6 +263,20 @@ async function generatePrediction(targetEpoch) {
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
         let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
+        if (numericConfidence >= 75.0) {
+    const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
+    const payload = {
+        username: "Cake Alert Bot 🍰",
+        content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${currentEpoch}\nPrediction: **${prediction.side}**\nConfidence: **${prediction.confidence}%**`
+    };
+
+    fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).catch(err => console.error("Failed to send webhook:", err));
+}
+
         // --- NEW: CALCULATE "LATER" LIKELIHOOD ---
         // Uses EMA distance, RSI divergence, and recent blockchain trend
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
