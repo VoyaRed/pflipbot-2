@@ -87,19 +87,19 @@ async function checkRound() {
 
 async function generatePrediction(targetEpoch) {
     try {
-
         // 1. Access the variable you set in Render
         const apiKey = process.env.SCRAPINGBEE_KEY;
-    
+        
         // 2. Safety check: Ensure the key actually exists
         if (!apiKey) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
             return; // Stop the function if we don't have a key
         }
+        
         const targetUrl = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
-       
-      
-        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=YOUR_API_KEY_HERE&url=${encodeURIComponent(targetUrl)}`;
+        // Dynamically inject the API key here
+        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}`;
+        
         const options = {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
@@ -107,36 +107,29 @@ async function generatePrediction(targetEpoch) {
             }
         };
 
-        try {
-        const res = await fetch(scrapingBeeUrl);
-        
-        if (!res.ok) {
-            throw new Error(`ScrapingBee failed with status: ${res.status}`);
-        }
+        // Use let instead of const so the retry loop can reassign it
+        let candles = null;
 
-        const candles = await res.json();
-
-        // 2. Fetch with Retry Logic (Try 3 times)
+        // 3. Fetch with Retry Logic (Try 3 times)
         for (let i = 0; i < 3; i++) {
             try {
-                const res = await fetch(url, options);
+                const res = await fetch(scrapingBeeUrl, options);
                 if (res.ok) {
                     candles = await res.json();
-                    break; // Success
+                    break; // Success! Break out of the retry loop
                 } else {
-                    console.log(`Binance attempt ${i+1} failed with status: ${res.status}`);
+                    console.log(`ScrapingBee attempt ${i+1} failed with status: ${res.status}`);
                 }
             } catch (e) {
-                console.log(`Binance attempt ${i+1} caught error: ${e.message}`);
+                console.log(`ScrapingBee attempt ${i+1} caught error: ${e.message}`);
             }
             await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
         }
 
-        if (!candles) throw new Error("Binance API failed after 3 retries");
-        
-        // --- REST OF YOUR EXISTING LOGIC ---
+        if (!candles) throw new Error("ScrapingBee API failed after 3 retries");
 
-        const closes = candles.map(c => parseFloat(c[4])); 
+        // --- REST OF YOUR EXISTING LOGIC ---
+        const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
 
@@ -163,7 +156,8 @@ async function generatePrediction(targetEpoch) {
         const avgGain = gains / 14; 
         const avgLoss = losses / 14;
         let rsi = 100;
-        if (avgLoss !== 0) rsi = 100 - (100 / (1 + (avgGain / avgLoss))); else if (avgGain === 0) rsi = 50;
+        if (avgLoss !== 0) rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
+        else if (avgGain === 0) rsi = 50;
 
         // BB
         const bbPeriod = 20;
@@ -177,7 +171,7 @@ async function generatePrediction(targetEpoch) {
         // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data[0]];
+            let emaArray = [data];
             for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             return emaArray;
         };
@@ -203,7 +197,7 @@ async function generatePrediction(targetEpoch) {
         let upScore = 0, downScore = 0;
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
-
+        
         if (isChoppy) {
             if (hasVolumeSpike) {
                 if (currentClose >= upperBB || rsi > 65) downScore += 4;
@@ -218,6 +212,7 @@ async function generatePrediction(targetEpoch) {
             if (currentClose < lowerBB) upScore += 2;
             if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2;
             if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
+            
             if (hasVolumeSpike) {
                 const opens = parseFloat(candles[candles.length - 1][1]);
                 if (currentClose > opens) upScore += 1; 
@@ -229,13 +224,19 @@ async function generatePrediction(targetEpoch) {
         let winningScore = 0, tryScore = 0;
         let tryPred = (currentMACD > currentSignal || rsi < 45) ? "UP" : "DOWN";
         
-        if (upScore > downScore && upScore >= 4) { prediction = "UP"; winningScore = upScore; }
-        else if (downScore > upScore && downScore >= 4) { prediction = "DOWN"; winningScore = downScore; }
-        else { prediction = "SKIP"; tryScore = (tryPred === "UP") ? upScore : downScore; }
+        if (upScore > downScore && upScore >= 4) { 
+            prediction = "UP"; 
+            winningScore = upScore;
+        } else if (downScore > upScore && downScore >= 4) { 
+            prediction = "DOWN";
+            winningScore = downScore; 
+        } else { 
+            prediction = "SKIP";
+            tryScore = (tryPred === "UP") ? upScore : downScore; 
+        }
         
         let finalConfidence = Math.min(99.1, 50 + (winningScore * 8.5)).toFixed(1) + "%";
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
-
         let displayConf = prediction === "SKIP" ? `Chop (Try: ${tryPred} ${tryConf})` : finalConfidence;
 
         memoryStore[`pred_${targetEpoch}`] = { pred: prediction, conf: displayConf };
@@ -248,11 +249,10 @@ async function generatePrediction(targetEpoch) {
             result: 'PENDING',
             confidence: displayConf
         }]);
-        
         if (error) console.error("❌ Early Supabase insert error:", error);
 
     } catch (e) {
-        console.error("Brain Failed:", e); }
+        console.error("Brain Failed:", e);
     }
 }
 async function verifyResult(epochToCheck) {
