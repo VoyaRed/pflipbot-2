@@ -1,568 +1,291 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UpsideDownCake 🍰</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root { 
-            /* Light Mode: Strawberry Vanilla Cake */
-            --bg: #fff0f5; 
-            --panel: #ffffff; 
-            --up: #31d0aa; 
-            --down: #ed4b9e; 
-            --text: #4a4a4a; 
-            --subtext: #8f90b0;
-            --primary: #ff6b6b; 
-            --primary-glow: rgba(255, 107, 107, 0.5);
-            --accent: #ffb347; 
-            --border: #eee;
-            --price-bg: #fafafa;
-            --header-bg: #f0f0f0;
-            --pattern-1: #ffb347;
-            --pattern-2: #ff6b6b;
+<script>
+        // --- THEME TOGGLE LOGIC ---
+        const themeBtn = document.getElementById('theme-toggle');
+        const currentTheme = localStorage.getItem('cakeTheme') || 'light';
+        
+        if (currentTheme === 'dark') {
+            document.body.classList.add('dark-mode');
+            themeBtn.innerText = '☀️ Strawberry Vanilla';
         }
 
-        /* Dark Mode: Dark Chocolate Cake */
-        body.dark-mode {
-            --bg: #1a0f14; 
-            --panel: #2d1b24; 
-            --text: #fce4ec; 
-            --subtext: #b39baf; 
-            --primary: #ff4757; 
-            --primary-glow: rgba(255, 71, 87, 0.5);
-            --accent: #ff9f43; 
-            --border: #4a2c3a;
-            --price-bg: #24151d;
-            --header-bg: #38222d;
-            --pattern-1: rgba(255, 159, 67, 0.15);
-            --pattern-2: rgba(255, 71, 87, 0.15);
-        }
-        
-        body { 
-            background: var(--bg); 
-            background-image: radial-gradient(var(--pattern-1) 1px, transparent 1px), radial-gradient(var(--pattern-2) 1px, transparent 1px);
-            background-size: 40px 40px;
-            background-position: 0 0, 20px 20px;
-            color: var(--text); 
-            font-family: 'Kanit', sans-serif; 
-            margin: 0; 
-            padding: 20px; 
-            transition: background-color 0.5s ease, color 0.5s ease, filter 0.5s ease;
-        }
-
-        /* Top Navigation Area */
-        .top-nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .title {
-            margin: 0;
-            font-weight: 800;
-            font-size: 2rem;
-            color: var(--primary);
-            text-shadow: 2px 2px 0px rgba(0,0,0,0.05);
-        }
-
-        .theme-btn {
-            background: var(--panel);
-            color: var(--text);
-            border: 2px solid var(--border);
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-family: 'Kanit', sans-serif;
-            font-weight: 800;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        }
-
-        .theme-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
-            border-color: var(--primary);
-        }
-
-        /* Loss Effect Classes */
-        @keyframes shake {
-            0% { transform: translate(1px, 1px) rotate(0deg); }
-            10% { transform: translate(-1px, -2px) rotate(-1deg); }
-            20% { transform: translate(-3px, 0px) rotate(1deg); }
-            30% { transform: translate(3px, 2px) rotate(0deg); }
-            40% { transform: translate(1px, -1px) rotate(1deg); }
-            50% { transform: translate(-1px, 2px) rotate(-1deg); }
-            60% { transform: translate(-3px, 1px) rotate(0deg); }
-            70% { transform: translate(3px, 1px) rotate(-1deg); }
-            80% { transform: translate(-1px, -1px) rotate(1deg); }
-            90% { transform: translate(1px, 2px) rotate(0deg); }
-            100% { transform: translate(1px, -2px) rotate(-1deg); }
-        }
-        .loss-shake {
-            animation: shake 0.5s;
-            animation-iteration-count: 1;
-            filter: grayscale(80%) sepia(20%) hue-rotate(-50deg);
-        }
-
-        .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); border: 4px solid var(--panel); transition: border-color 0.5s ease; }
-        
-        .rounds-container { display: flex; justify-content: center; gap: 24px; margin-bottom: 40px; flex-wrap: wrap; }
-        
-        .card { 
-            background: var(--panel); 
-            border-radius: 24px; 
-            width: 310px; 
-            padding: 0; 
-            display: flex; 
-            flex-direction: column; 
-            overflow: hidden;
-            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.08);
-            transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.5s ease;
-            border: 2px solid transparent;
-        }
-        .card:hover { transform: translateY(-8px); box-shadow: 0 15px 30px var(--primary-glow); }
-        
-        .card-header { padding: 15px 20px; font-weight: bold; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; letter-spacing: 1px;}
-        .card-body { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; flex-grow: 1; }
-        
-        .expired { opacity: 0.85; border: 2px solid var(--border); }
-        .expired .card-header { background: var(--header-bg); color: var(--subtext); transition: background-color 0.5s ease; }
-        
-        @keyframes pulseGlow {
-            0% { box-shadow: 0 0 0 0 var(--primary-glow); }
-            70% { box-shadow: 0 0 0 15px rgba(255, 107, 107, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
-        }
-        .live { border: 2px solid var(--primary); transform: scale(1.02); animation: pulseGlow 2.5s infinite; z-index: 10; }
-        .live:hover { transform: scale(1.02) translateY(-8px); }
-        .live .card-header { background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; }
-        
-        .next .card-header { background: var(--primary); color: white; }
-        
-        .prediction-badge { 
-            padding: 10px 15px; border-radius: 12px; font-size: 1.4rem; font-weight: 800; width: 100%; 
-            text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-        }
-        .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .pred-waiting { background: var(--price-bg); color: var(--subtext); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.05); font-size: 1.2rem; border: 1px solid var(--border); }
-
-        .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; margin-bottom: 5px; color: var(--text); }
-        
-        .progress-bg { background: var(--header-bg); border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; transition: background-color 0.5s ease; }
-        .progress-fill { background: linear-gradient(90deg, var(--accent), var(--primary)); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
-        
-        .price-box {
-            background: var(--price-bg);
-            border-radius: 16px;
-            padding: 15px;
-            width: 100%;
-            box-sizing: border-box;
-            text-align: left;
-            border: 1px solid var(--border);
-            margin-top: auto;
-            transition: background-color 0.5s ease, border-color 0.5s ease;
-        }
-        .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
-        .main-price { font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; transition: color 0.3s ease; }
-        .main-price.up { color: var(--up); }
-        .main-price.down { color: var(--down); }
-        .main-price.waiting { color: var(--text); }
-        .price-row { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px; }
-        .price-row span:first-child { color: var(--subtext); font-weight: 600; }
-        .price-row span:last-child { font-weight: bold; color: var(--text); }
-
-        .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); transition: background-color 0.5s ease; }
-        
-        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-        .ledger-item { animation: slideIn 0.4s ease-out forwards; margin-bottom: 8px; background: var(--price-bg); border: 1px solid var(--border); padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; color: var(--text); transition: background-color 0.5s ease, border-color 0.5s ease; }
-        .confidence-tag { font-size: 0.85rem; background: var(--primary-glow); padding: 4px 8px; border-radius: 6px; color: var(--text); font-weight: bold;}
-        .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 6px; min-height: 1.2em; font-weight: 600; }
-        
-        /* Mobile Responsiveness */
-        @media (max-width: 1024px) {
-            .rounds-container {
-                flex-direction: column;
-                align-items: center;
-            }
-            .card {
-                width: 100%;
-                max-width: 450px; /* Limits width on tablets so it doesn't look stretched */
-            }
-            .live {
-                transform: scale(1);
-            }
-            .live:hover { 
-                transform: translateY(-4px); 
-            }
-            .chart-box {
-                height: 350px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            body { padding: 10px; }
-            .top-nav { flex-direction: column; text-align: center; }
-            .chart-box { height: 250px; margin-bottom: 20px; }
-            .card-header { font-size: 1rem; padding: 12px 15px; }
-            .card-body { padding: 15px; }
-            .prediction-badge { font-size: 1.2rem; padding: 8px 10px; }
-            .main-price { font-size: 1.4rem; }
-            .ledger-box { padding: 15px; }
-            .ledger-item { flex-direction: column; gap: 8px; text-align: center; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        
-        <div class="top-nav">
-            <h1 class="title">UpsideDownCake 🍰</h1>
-            <button id="theme-toggle" class="theme-btn">🌙 Dark Chocolate</button>
-        </div>
-
-        <div id="tv-container" class="chart-box"></div>
-        
-        <div class="rounds-container">
-            <div class="card expired">
-                <div class="card-header">
-                    <span>Expired</span>
-                    <span id="prev-epoch">#---</span>
-                </div>
-                <div class="card-body">
-                    <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="prev-conf" class="confidence-tag">--%</span></div>
-                    <div style="width: 100%;">
-                        <div id="prev-bet" class="prediction-badge pred-waiting">---</div>
-                        <div id="prev-bet-price" class="bet-price-label"></div>
-                    </div>
-                    <div class="stat-row" style="margin-top: 5px;"><span style="font-weight: bold;">Result</span></div>
-                    <div id="prev-result" class="prediction-badge pred-waiting" style="padding: 6px; font-size: 1.1rem;">---</div>
-
-                    <div class="price-box">
-                        <div class="price-label">Closed Price</div>
-                        <div id="prev-close-price" class="main-price waiting">---</div>
-                        <div class="price-row">
-                            <span>Locked Price:</span>
-                            <span id="prev-lock-price">---</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card live">
-                <div class="progress-bg" style="border-radius: 0; margin: 0; height: 6px;"><div id="progress-bar" class="progress-fill"></div></div>
-                <div class="card-header">
-                    <span>▶ LIVE</span>
-                    <span id="live-epoch">#---</span>
-                </div>
-                <div class="card-body" style="width: 100%; box-sizing: border-box;">
-                    <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="live-conf" class="confidence-tag">--%</span></div>
-                    <div style="width: 100%;">
-                        <div id="live-bet" class="prediction-badge pred-waiting">---</div>
-                        <div id="live-bet-price" class="bet-price-label"></div>
-                    </div>
-
-                    <div class="price-box">
-                        <div class="price-label">Last Price (Oracle)</div>
-                        <div id="live-last-price" class="main-price waiting">---</div>
-                        <div class="price-row">
-                            <span>Locked Price:</span>
-                            <span id="live-lock-price">---</span>
-                        </div>
-                        <div class="price-row">
-                            <span>Prize Pool:</span>
-                            <span id="live-prize-pool">---</span>
-                        </div>
-                    </div>
-                    <div id="time-left" style="text-align: center; font-weight: 800; font-size: 1.2rem; color: var(--primary);">--:--</div>
-                </div>
-            </div>
-
-            <div class="card next">
-                <div class="card-header">
-                    <span>▶ Next</span>
-                    <span id="next-epoch">#---</span>
-                </div>
-                <div class="card-body">
-                    <div class="stat-row"><span style="font-weight: bold;">Bot Target</span><span id="next-conf" class="confidence-tag" style="color: var(--primary);">Calculating...</span></div>
-                    <div style="width: 100%;">
-                        <div id="bot-prediction" class="prediction-badge pred-waiting">Waiting...</div>
-                        <div id="bot-bet-price" class="bet-price-label"></div>
-                    </div>
-                    
-                    <div class="stat-row" style="margin-top: 15px;">
-                        <span style="color: var(--subtext);">Market RSI:</span>
-                        <span id="live-rsi" style="font-weight: bold;">--</span>
-                    </div>
-                    <div class="stat-row">
-                        <span style="color: var(--subtext);">MACD Hist:</span>
-                        <span id="live-macd" style="font-weight: bold;">--</span>
-                    </div>
-                    
-                    <div class="price-box">
-                        <div class="price-row" style="margin: 5px 0;">
-                            <span style="font-size: 1.1rem; color: var(--text);">Prize Pool:</span>
-                            <span id="next-prize-pool" style="font-size: 1.1rem; color: var(--text);">---</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="ledger-box">
-            <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 800; color: var(--primary);">UpsideDownCake Execution Ledger 🍰</h3>
-            <div id="ledger" style="height: 300px; overflow-y: auto; padding-right: 10px;"></div>
-        </div>
-    </div>
-
-    <script>
-    // --- THEME TOGGLE LOGIC ---
-    const themeBtn = document.getElementById('theme-toggle');
-    const currentTheme = localStorage.getItem('cakeTheme') || 'light';
-    
-    if (currentTheme === 'dark') {
-        document.body.classList.add('dark-mode');
-        themeBtn.innerText = '☀️ Strawberry Vanilla';
-    }
-
-    themeBtn.addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-        const isDark = document.body.classList.contains('dark-mode');
-        
-        localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
-        themeBtn.innerText = isDark ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
-        initTradingView();
-    });
-
-    function initTradingView() {
-        const isDark = document.body.classList.contains('dark-mode');
-        document.getElementById('tv-container').innerHTML = ''; 
-        new TradingView.widget({ 
-            "container_id": "tv-container", 
-            "symbol": "BINANCE:BNBUSD", 
-            "interval": "5", 
-            "theme": isDark ? "dark" : "light", 
-            "autosize": true, 
-            "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] 
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
+            themeBtn.innerText = isDark ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
+            initTradingView();
         });
-    }
 
-    // --- DASHBOARD LOGIC (READ-ONLY) ---
-    const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
-    const ABI = [
-        "function currentEpoch() view returns (uint256)", 
-        "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
-    ];
-    
-    const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
-    const CHAINLINK_ABI = [
-        "function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"
-    ];
-
-    let provider, contract, oracleContract, timerInterval;
-    let lastLockedPrice = 0;
-
-    async function fetchOraclePrice() {
-        if (!oracleContract) return;
-        try {
-            const data = await oracleContract.latestRoundData();
-            const price = (data.answer / 1e8); 
-            
-            const el = document.getElementById('live-last-price');
-            if (el) {
-                el.innerText = '$' + price.toFixed(4);
-                if (lastLockedPrice > 0) {
-                    el.className = price >= lastLockedPrice ? 'main-price up' : 'main-price down';
-                }
-            }
-        } catch (error) {
-            console.error("Error fetching Oracle price:", error);
+        function initTradingView() {
+            const isDark = document.body.classList.contains('dark-mode');
+            document.getElementById('tv-container').innerHTML = ''; 
+            new TradingView.widget({ 
+                "container_id": "tv-container", 
+                "symbol": "BINANCE:BNBUSD", 
+                "interval": "5", 
+                "theme": isDark ? "dark" : "light", 
+                "autosize": true, 
+                "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] 
+            });
         }
-    }
 
-    async function loadLedgerHistory() {
-        try {
-            const { data, error } = await supabaseClient
-                .from('prediction_logs')
-                .select('*')
-                .order('epoch_id', { ascending: false })
-                .limit(20);
+        // --- DASHBOARD DATA SYNC LOGIC ---
+        const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-            if (data && data.length > 0) {
-                document.getElementById('ledger').innerHTML = ''; // clear before load
-                
-                // Get the epoch numbers from the UI
-                const nextEpoch = parseInt(document.getElementById("next-epoch").innerText.replace('#', '')) || 0;
-                const liveEpoch = parseInt(document.getElementById("live-epoch").innerText.replace('#', '')) || 0;
-                const prevEpoch = parseInt(document.getElementById("prev-epoch").innerText.replace('#', '')) || 0;
-
-                data.slice().reverse().forEach(log => {
-                    // 1. Populate the NEXT card if we have a match
-                    if (log.epoch_id === nextEpoch) {
-                        const el = document.getElementById('bot-prediction');
-                        el.innerText = log.predicted_side;
-                        el.className = `prediction-badge pred-${log.predicted_side.toLowerCase()}`;
-                        document.getElementById('next-conf').innerText = log.confidence;
-                    }
-                    
-                    // 2. Populate the LIVE card if we have a match
-                    if (log.epoch_id === liveEpoch) {
-                        const el = document.getElementById('live-bet');
-                        el.innerText = log.predicted_side;
-                        el.className = `prediction-badge pred-${log.predicted_side.toLowerCase()}`;
-                        document.getElementById('live-conf').innerText = log.confidence;
-                    }
-
-                    // 3. Populate the EXPIRED card if we have a match
-                    if (log.epoch_id === prevEpoch) {
-                        const el = document.getElementById('prev-bet');
-                        el.innerText = log.predicted_side;
-                        el.className = `prediction-badge pred-${log.predicted_side.toLowerCase()}`;
-                        document.getElementById('prev-conf').innerText = log.confidence;
-                        
-                        const resEl = document.getElementById('prev-result');
-                        resEl.innerText = log.result;
-                        if (log.result === 'WIN') resEl.className = 'prediction-badge pred-up';
-                        else if (log.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
-                        else resEl.className = 'prediction-badge pred-waiting';
-                    }
-
-                    // 4. Only populate the Ledger list with FINISHED rounds
-                    if (log.result !== 'PENDING') {
-                        renderLedger(log.epoch_id, log.predicted_side, null, log.result, log.confidence);
-                    }
-                });
-            }
-        } catch (e) {
-            console.error("Could not load ledger history", e);
-        }
-    }
-
-    async function init() {
-        initTradingView(); 
-        try {
-            const fastest = await findFastestRPC();
-            provider = fastest.provider; 
-            contract = fastest.contract;
-            oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
-            setInterval(fetchOraclePrice, 3000);
-            fetchOraclePrice(); 
-        } catch (error) { 
-            console.error("Initialization failed, retrying in 10s...");
-            setTimeout(init, 10000); 
-            return; 
-        }
-        
-        await loadLedgerHistory();
-        runLoop();
-    }
-
-    async function runLoop() {
-        try {
-            await updateDashboardData();
-            await loadLedgerHistory(); // Poll database for bot updates
-            setTimeout(runLoop, 10000); 
-        } catch (error) {
-            setTimeout(runLoop, 20000);
-        }
-    }
-
-    async function findFastestRPC() {
-        const nodes = [
-         "https://bsc-rpc.publicnode.com",
-         "https://binance.llamarpc.com",
-         "https://bsc-dataseed.binance.org"
+        const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
+        const ABI = [
+            "function currentEpoch() view returns (uint256)", 
+            "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
         ];
-        for (let url of nodes) {
+        
+        const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+        const CHAINLINK_ABI = ["function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"];
+
+        let provider, contract, oracleContract, timerInterval;
+        let lastLockedPrice = 0;
+        let notifiedEpochs = new Set();
+
+        async function init() {
+            initTradingView(); 
             try {
-                const p = new ethers.providers.JsonRpcProvider(url);
-                const c = new ethers.Contract(PREDICT_ADDR, ABI, p);
-                await c.currentEpoch(); 
-                return { provider: p, contract: c };
-            } catch (e) { }
-        }
-        throw new Error("All RPC nodes failed.");
-    }
+                const nodes = [
+                    "https://bsc-rpc.publicnode.com",
+                    "https://binance.llamarpc.com",
+                    "https://bsc-dataseed.binance.org"
+                ];
+                
+                // Connect to Blockchain
+                for (let url of nodes) {
+                    try {
+                        provider = new ethers.providers.JsonRpcProvider(url);
+                        contract = new ethers.Contract(PREDICT_ADDR, ABI, provider);
+                        await contract.currentEpoch(); 
+                        break;
+                    } catch (e) { }
+                }
 
-    async function updateDashboardData() {
-        const currentEpoch = (await contract.currentEpoch()).toNumber();
-        const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
-        const expiredEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
-
-        document.getElementById("next-epoch").innerText = `#${currentEpoch}`;
-        if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
-        if (expiredEpoch > 0) document.getElementById("prev-epoch").innerText = `#${expiredEpoch}`;
-
-        if (liveEpoch > 0) {
-            const liveRound = await contract.rounds(liveEpoch);
-            const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
-            const totalPool = parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4);
-            
-            lastLockedPrice = parseFloat(lockPrice); 
-            document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
-            document.getElementById('live-prize-pool').innerText = `${totalPool} BNB`;
-            startTimer(liveRound.closeTimestamp.toNumber());
-        }
-
-        const nextRoundData = await contract.rounds(currentEpoch);
-        const nextPool = parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4);
-        document.getElementById('next-prize-pool').innerText = `${nextPool} BNB`;
-        
-        // Let the user know the cloud is handling it
-        document.getElementById('bot-prediction').innerText = "Cloud Bot Running";
-        document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
-        document.getElementById('next-conf').innerText = "24/7 Active";
-    }
-
-    function startTimer(targetTimestamp) {
-        clearInterval(timerInterval);
-        const bar = document.getElementById('progress-bar');
-        const text = document.getElementById('time-left');
-
-        timerInterval = setInterval(() => {
-            const now = Math.floor(Date.now() / 1000);
-            const secondsLeft = targetTimestamp - now;
-            const total = 300; 
-
-            if (secondsLeft <= 0) {
-                text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval);
-            } else {
-                const mins = Math.floor(secondsLeft / 60); const secs = secondsLeft % 60;
-                text.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                bar.style.width = `${Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100))}%`;
+                oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
+                setInterval(fetchOraclePrice, 3000);
+                fetchOraclePrice(); 
+                
+                runSyncLoop();
+            } catch (error) { 
+                console.error("Initialization failed, retrying in 5s...");
+                setTimeout(init, 5000); 
             }
-        }, 1000);
-    }
+        }
 
-    function renderLedger(epoch, predicted, actual, result, confidence) {
-        const ledger = document.getElementById('ledger');
-        let resultColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "var(--subtext)");
-        let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "var(--subtext)");
-        
-        if (ledger.innerHTML.includes(`Epoch #${epoch}`)) return;
+        async function fetchOraclePrice() {
+            if (!oracleContract) return;
+            try {
+                const data = await oracleContract.latestRoundData();
+                const price = (data.answer / 1e8); 
+                const el = document.getElementById('live-last-price');
+                if (el) {
+                    el.innerText = '$' + price.toFixed(4);
+                    if (lastLockedPrice > 0) {
+                        el.className = price >= lastLockedPrice ? 'main-price up' : 'main-price down';
+                    }
+                }
+            } catch (error) {}
+        }
 
-        ledger.innerHTML = `
-        <div class="ledger-item">
-            <div><strong>Epoch #${epoch}</strong> <span class="confidence-tag" style="margin-left: 10px;">${confidence} Conf.</span></div>
-            <div>Bot: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; Result: <span style="color: ${resultColor}; font-weight: 800;">${result}</span></div>
-        </div>` + ledger.innerHTML;
-    }
+        async function updateMarketVisuals() {
+            // Frontend calculates its own RSI/MACD via proxy for the UI
+            const endpoints = [
+                "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
+                "https://corsproxy.io/?" + encodeURIComponent("https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100")
+            ];
 
-    window.onload = init;
-</script>
-</body>
-</html>
+            let candles;
+            for (let url of endpoints) {
+                try {
+                    const res = await fetch(url);
+                    if (res.ok) { candles = await res.json(); break; }
+                } catch (e) {}
+            }
+            if (!candles) return;
+
+            const closes = candles.map(c => parseFloat(c[4]));
+            
+            // Calc RSI
+            let gains = 0, losses = 0;
+            for(let i = closes.length - 14; i < closes.length; i++) {
+                const diff = closes[i] - closes[i-1];
+                if (diff > 0) gains += diff; else losses += Math.abs(diff);
+            }
+            const avgGain = gains / 14; const avgLoss = losses / 14;
+            let rsi = 100;
+            if (avgLoss !== 0) { rsi = 100 - (100 / (1 + (avgGain / avgLoss))); }
+            document.getElementById('live-rsi').innerText = rsi.toFixed(2);
+
+            // Calc MACD
+            const calculateEMAArray = (data, period) => {
+                const k = 2 / (period + 1); let emaArray = [data[0]];
+                for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
+                return emaArray;
+            };
+            const ema12Array = calculateEMAArray(closes, 12);
+            const ema26Array = calculateEMAArray(closes, 26);
+            const macdLineArray = ema12Array.map((v, i) => v - ema26Array[i]);
+            const signalLineArray = calculateEMAArray(macdLineArray, 9);
+            const currentHist = macdLineArray[macdLineArray.length - 1] - signalLineArray[signalLineArray.length - 1];
+            
+            let macdColor = currentHist >= 0 ? "var(--up)" : "var(--down)";
+            document.getElementById('live-macd').innerHTML = `<span style="color: ${macdColor}">${currentHist.toFixed(3)}</span>`;
+        }
+
+        async function runSyncLoop() {
+            try {
+                const currentEpoch = (await contract.currentEpoch()).toNumber();
+                const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
+                const prevEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
+
+                // 1. Update UI Headers & Live Ethers Data
+                document.getElementById("next-epoch").innerText = `#${currentEpoch}`;
+                if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
+                if (prevEpoch > 0) document.getElementById("prev-epoch").innerText = `#${prevEpoch}`;
+
+                const nextRoundData = await contract.rounds(currentEpoch);
+                document.getElementById('next-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4)} BNB`;
+
+                if (liveEpoch > 0) {
+                    const liveRound = await contract.rounds(liveEpoch);
+                    const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
+                    lastLockedPrice = parseFloat(lockPrice); 
+                    
+                    document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
+                    document.getElementById('live-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4)} BNB`;
+                    startTimer(liveRound.closeTimestamp.toNumber());
+                }
+
+                if (prevEpoch > 0) {
+                    const prevRound = await contract.rounds(prevEpoch);
+                    if (prevRound.oracleCalled) {
+                        const lockPrice = parseFloat(ethers.utils.formatUnits(prevRound.lockPrice, 8));
+                        const closePrice = parseFloat(ethers.utils.formatUnits(prevRound.closePrice, 8));
+                        
+                        document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
+                        const closeEl = document.getElementById('prev-close-price');
+                        closeEl.innerText = `$${closePrice.toFixed(4)}`;
+                        closeEl.className = `main-price ${closePrice >= lockPrice ? 'up' : 'down'}`;
+                    }
+                }
+
+                // 2. Refresh Visual Indicators
+                await updateMarketVisuals();
+
+                // 3. Sync with Bot Mind (Supabase)
+                const { data } = await supabaseClient.from('prediction_logs')
+                    .select('*').order('epoch_id', { ascending: false }).limit(20);
+
+                if (data) renderDashboardFromDB(data, currentEpoch, liveEpoch, prevEpoch);
+
+            } catch (error) { console.warn("Sync Error:", error); }
+            
+            setTimeout(runSyncLoop, 10000); 
+        }
+
+        function renderDashboardFromDB(logs, nextEpoch, liveEpoch, prevEpoch) {
+            document.getElementById('ledger').innerHTML = ''; // Clear ledger for redraw
+            
+            let hasPendingNext = false;
+
+            logs.forEach(log => {
+                const sideCls = log.predicted_side === 'UP' ? 'pred-up' : (log.predicted_side === 'DOWN' ? 'pred-down' : 'pred-waiting');
+                const isSkip = log.predicted_side.includes('SKIP');
+
+                // --- NEXT CARD ---
+                if (log.epoch_id === nextEpoch) {
+                    hasPendingNext = true;
+                    const el = document.getElementById('bot-prediction');
+                    el.innerText = isSkip ? "SKIP" : log.predicted_side; 
+                    el.className = `prediction-badge ${sideCls}`;
+                    document.getElementById('next-conf').innerText = log.confidence;
+                }
+
+                // --- LIVE CARD ---
+                if (log.epoch_id === liveEpoch) {
+                    const el = document.getElementById('live-bet');
+                    el.innerText = isSkip ? "SKIP" : log.predicted_side; 
+                    el.className = `prediction-badge ${sideCls}`;
+                    document.getElementById('live-conf').innerText = log.confidence;
+                }
+
+                // --- PREV CARD ---
+                if (log.epoch_id === prevEpoch) {
+                    const el = document.getElementById('prev-bet');
+                    el.innerText = isSkip ? "SKIP" : log.predicted_side; 
+                    el.className = `prediction-badge ${sideCls}`;
+                    document.getElementById('prev-conf').innerText = log.confidence;
+                    
+                    const resEl = document.getElementById('prev-result');
+                    resEl.innerText = log.result;
+                    if (log.result === 'WIN') resEl.className = 'prediction-badge pred-up';
+                    else if (log.result === 'LOSS') resEl.className = 'prediction-badge pred-down';
+                    else resEl.className = 'prediction-badge pred-waiting';
+                }
+
+                // --- LEDGER & FX ---
+                if (log.result !== 'PENDING') {
+                    renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence);
+                    
+                    if (!notifiedEpochs.has(log.epoch_id)) {
+                        if (log.result === 'WIN') triggerWinEffect();
+                        if (log.result === 'LOSS') { document.body.classList.add('loss-shake'); setTimeout(() => document.body.classList.remove('loss-shake'), 1000); }
+                        notifiedEpochs.add(log.epoch_id);
+                    }
+                }
+            });
+
+            // If bot hasn't pushed a prediction yet, show Waiting
+            if (!hasPendingNext) {
+                document.getElementById('bot-prediction').innerText = "Waiting for 75s";
+                document.getElementById('bot-prediction').className = "prediction-badge pred-waiting";
+                document.getElementById('next-conf').innerText = "Analyzing...";
+            }
+        }
+
+        function renderLedgerRow(epoch, predicted, result, confidence) {
+            const ledger = document.getElementById('ledger');
+            let resColor = result === "WIN" ? "var(--up)" : (result === "LOSS" ? "var(--down)" : "var(--subtext)");
+            let predColor = predicted === "UP" ? "var(--up)" : (predicted === "DOWN" ? "var(--down)" : "var(--subtext)");
+            
+            ledger.innerHTML += `
+            <div class="ledger-item">
+                <div><strong>Epoch #${epoch}</strong> <span class="confidence-tag" style="margin-left: 10px;">${confidence}</span></div>
+                <div>Bot: <span style="color: ${predColor}; font-weight: bold;">${predicted}</span> &nbsp;→&nbsp; <span style="color: ${resColor}; font-weight: 800;">${result}</span></div>
+            </div>`;
+        }
+
+        function startTimer(targetTimestamp) {
+            clearInterval(timerInterval);
+            const bar = document.getElementById('progress-bar');
+            const text = document.getElementById('time-left');
+
+            timerInterval = setInterval(() => {
+                const secondsLeft = targetTimestamp - Math.floor(Date.now() / 1000);
+                if (secondsLeft <= 0) { text.innerText = "00:00"; bar.style.width = "100%"; clearInterval(timerInterval); } 
+                else {
+                    text.innerText = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
+                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
+                }
+            }, 1000);
+        }
+
+        function triggerWinEffect() {
+            var duration = 3 * 1000; var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random() * (0.3 - 0.1) + 0.1, y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random() * (0.9 - 0.7) + 0.7, y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        window.onload = init;
+    </script>
