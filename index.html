@@ -578,9 +578,8 @@
                     const predictionObject = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
                     localStorage.setItem(`pred_${targetEpoch}`, JSON.stringify(predictionObject));
                     displayPrediction(prediction, finalConfidence, null, null, currentBetPrice);
-                    ]
-                }   
-            } catch (e) { console.error("Brain Failed:", e); }
+                    }   
+            } catch (e) { console.error("Brain Failed:", e); }     
         }
 
         function displayPrediction(prediction, confidence, tryPred = null, tryConf = null, betPrice = null) {
