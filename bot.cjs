@@ -269,12 +269,23 @@ async function verifyResult(epochToCheck) {
         const { data } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single();
         
         if (data) {
-            const isWin = (data.predicted_side === "SKIP" || data.predicted_side.includes('SKIP')) ? "SKIPPED" : ((data.predicted_side === actualResult) ? "WIN" : "LOSS");
-            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${isWin}`);
+            // ✅ CHANGE THIS LOGIC:
+            // We now compare the predicted side (even if it was a 'SKIP') against the actual result.
+            // If the user predicted 'SKIP', they technically didn't 'WIN', 
+            // but we want to see if the direction they 'skipped' would have been correct.
+            
+            let resultStatus;
+            if (data.predicted_side === "SKIP") {
+                resultStatus = "SKIPPED_WOULD_HAVE_BEEN_" + actualResult; 
+            } else {
+                resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS";
+            }
 
-            // Update Database with win/loss
+            console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
+
+            // Update Database
             await supabaseClient.from('prediction_logs')
-                .update({ result: isWin })
+                .update({ result: resultStatus })
                 .eq('epoch_id', epochToCheck);
         }
     } catch(e) { console.error("Result Verification Failed:", e); }
