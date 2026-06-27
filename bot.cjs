@@ -104,28 +104,21 @@ async function generatePrediction(targetEpoch) {
         const oraclePrice = parseFloat(ethers.utils.formatUnits(price, 8)) - 1; 
         const currentBetPrice = oraclePrice.toFixed(4); 
 
-        // 2. Fetch Klines (Removed CORS proxies, hitting Binance directly)
-        // Use a proxy to avoid IP blocking
-        const endpoints = [
-            "https://corsproxy.io/?https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
-            "https://thingproxy.freeboard.io/fetch/https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100",
-        ];
-        
+       // 2. Fetch Klines (Direct to Binance, NO PROXIES in Node.js)
+        const url = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
         let candles;
-        for (let url of endpoints) {
-            try {
-                // Add User-Agent so we look like a browser
-                const res = await fetch(url, {
-                    headers: { "User-Agent": "Mozilla/5.0" },
-                });
-                if (res.ok) {
-                    candles = await res.json();
-                    break;
-                }
-            } catch (e) {
-                console.warn("Proxy attempt failed");
+        
+        try {
+            const res = await fetch(url);
+            if (res.ok) {
+                candles = await res.json();
+            } else {
+                throw new Error(`Binance returned ${res.status}`);
             }
+        } catch (e) {
+            console.error("Binance API fetch failed:", e.message);
         }
+
         if (!candles) throw new Error("Binance API failed");
 
         
@@ -237,7 +230,7 @@ async function generatePrediction(targetEpoch) {
         let finalConfidence = Math.min(99.1, 50 + (winningScore * 8.5)).toFixed(1) + "%";
         let tryConf = Math.min(98.5, 50 + (tryScore * 8.5)).toFixed(1) + "%";
 
-        // Save to internal memory instead of localStorage
+        // Save to internal memory
         if (prediction === "SKIP") {
             memoryStore[`pred_${targetEpoch}`] = { pred: "SKIP", conf: "Chop / Low Vol", try: tryPred, tryConf: tryConf, betPrice: currentBetPrice };
             console.log(`🤖 [Epoch ${targetEpoch}] Decision: SKIP (Chop / Low Vol). Would have tried: ${tryPred}`);
@@ -245,6 +238,17 @@ async function generatePrediction(targetEpoch) {
             memoryStore[`pred_${targetEpoch}`] = { pred: prediction, conf: finalConfidence, betPrice: currentBetPrice };
             console.log(`🤖 [Epoch ${targetEpoch}] Decision: ${prediction} (Conf: ${finalConfidence}, Bet Price: $${currentBetPrice})`);
         }   
+
+        // --- NEW: PUSH TO SUPABASE IMMEDIATELY SO WEBSITE SEES IT ---
+        const botData = memoryStore[`pred_${targetEpoch}`];
+        const { error } = await supabaseClient.from('prediction_logs').insert([{ 
+            epoch_id: targetEpoch, 
+            predicted_side: botData.pred, 
+            result: 'PENDING', // Tell the frontend we are waiting
+            confidence: botData.conf
+        }]);
+        
+        if (error) console.error("❌ Early Supabase insert error:", error);
 
     } catch (e) { 
         console.error("Brain Failed:", e); 
@@ -274,18 +278,15 @@ async function verifyResult(epochToCheck) {
             console.log(`   Outcome: ${isWin}`);
             
             // Push to Supabase Database
-            const { error } = await supabaseClient.from('prediction_logs').insert([{ 
-                epoch_id: epochToCheck, 
-                predicted_side: botData.pred, 
-                result: isWin,
-                confidence: botData.conf
-            }]);
+            // --- UPDATED: UPDATE THE EXISTING ROW INSTEAD OF INSERTING ---
+            const { error } = await supabaseClient.from('prediction_logs')
+                .update({ result: isWin })
+                .eq('epoch_id', epochToCheck); // Match the ID we inserted earlier
 
             if (error) {
-                console.error("❌ Supabase insert error:", error);
+                console.error("❌ Supabase update error:", error);
             } else {
                 console.log(`✅ Successfully logged Epoch ${epochToCheck} to Database.`);
-                // Clean up memory to prevent memory leaks over time
                 delete memoryStore[`pred_${epochToCheck}`];
             }
         }
