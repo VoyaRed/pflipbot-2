@@ -673,9 +673,10 @@
             let mixedWins = recent15Mixed.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const mixedWinRate = recent15Mixed.length > 0 ? ((mixedWins / recent15Mixed.length) * 100).toFixed(1) : "0.0";
             
-            const trendLogs = resolvedLogs.filter(log => {
-                const match = log.confidence.match(/(\d+(?:\.\d+)?)/);
-                return match ? parseFloat(match[1]) > 50.0 : true; 
+            const trendLogs = recentLogs.filter(l => {
+                if (!l.confidence) return false; // Safety check for null/empty values
+                const match = String(l.confidence).match(/(\d+(?:\.\d+)?)/);
+                return match ? parseFloat(match[1]) >= 55.0 : false;
             });
             const recent15Trend = trendLogs.slice(0, 15);
             let trendWins = recent15Trend.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
