@@ -57,7 +57,7 @@ async function runLoop() {
     } catch (error) {
         console.warn("Loop error:", error.message);
     }
-    setTimeout(runLoop, 10000);
+    setTimeout(runLoop, 2000);
 }
 
 async function checkRound() {
@@ -77,18 +77,14 @@ async function checkRound() {
         await generatePrediction(currentEpoch);
     }
 
-    // --- 2. LOCK IN THE PREDICTION ---
-    // If the contract just rolled over to a new round, lock in the previous one!
-    const justLockedEpoch = currentEpoch - 1;
-    if (memoryStore[`best_${justLockedEpoch}`] && !memoryStore[`locked_${justLockedEpoch}`]) {
-        await lockInPrediction(justLockedEpoch);
-    }
-    // Safety catch: If the timer hit 0 but the contract hasn't rolled over yet
-    if (secondsLeft <= 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
+     // --- 2. LOCK IN THE PREDICTION ---
+    if (secondsLeft <= 13 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
+        console.log(`⏱️ 13s Threshold hit! Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
     }
 
     // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
+    if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
     try {
         const { data: pendingLogs } = await supabaseClient
             .from('prediction_logs')
