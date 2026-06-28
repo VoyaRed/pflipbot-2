@@ -259,12 +259,13 @@ async function generatePrediction(targetEpoch) {
 
         // Existing Choppiness check
         let bbWidth = (upperBB - lowerBB) / sma;
-        let isChoppy = bbWidth < 0.0015;
+        let isChoppy = bbWidth < 0.0010;
 
         // --- 5. THE DECISION ENGINE ---
-        if (atrPercentage < 0.04 || isChoppy) {
+        if (atrPercentage < 0.03 || isChoppy) {
             // Market is flat, highly unpredictable on 5m. Skip it.
-            upScore = *0.5; downScore = *0.5;
+            upScore = Math.max(0, upScore - 2.0);
+            downScore = Math.max(0, downScore - 2.0);
         } else {
             // Trend Alignment (MACD & EMA)
             if (ema9 > ema21) upScore += 1.5;
@@ -293,7 +294,7 @@ async function generatePrediction(targetEpoch) {
         let finalConfidence = numericConfidence.toFixed(1) + "%";
 
         // Webhook Alert (Only fires if confidence is 75% or higher)
-        if (numericConfidence >= 75.0) {
+        if (numericConfidence >= 65.0) {
             const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
             fetch(webhookUrl, {
                 method: 'POST',
