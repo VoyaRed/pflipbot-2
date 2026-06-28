@@ -267,10 +267,10 @@ async function generatePrediction(targetEpoch) {
 
         // Existing Choppiness check
         let bbWidth = (upperBB - lowerBB) / sma;
-        let isChoppy = bbWidth < 0.0010;
+        let isChoppy = bbWidth < 0.0013;
 
         // --- 5. THE DECISION ENGINE ---
-        if (atrPercentage < 0.03 || isChoppy) {
+        if (atrPercentage < 0.04 || isChoppy) {
             // Market is flat, highly unpredictable on 5m. Skip it.
             upScore = Math.max(0, upScore - 2.0);
             downScore = Math.max(0, downScore - 2.0);
