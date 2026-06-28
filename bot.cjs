@@ -107,7 +107,7 @@ async function checkRound() {
     }
 }
 
-async function updateMarketStats(rsi, macd, price, laterPred = "NONE", laterConf = "0%") {
+async function updateMarketStats(rsi, macd, price, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%") {
     const { error } = await supabaseClient
         .from('market_stats')
         .upsert([{ 
@@ -115,6 +115,8 @@ async function updateMarketStats(rsi, macd, price, laterPred = "NONE", laterConf
             rsi: rsi, 
             macd: macd, 
             price: price,
+            current_pred: currentPred,
+            current_conf: currentConf,
             later_pred: laterPred,
             later_conf: laterConf,
             updated_at: new Date().toISOString() 
@@ -314,28 +316,23 @@ async function generatePrediction(targetEpoch) {
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
 
-        // --- NEW: THE MEMORY VAULT ---
-        // Create an empty vault for this epoch if it doesn't exist
-        if (!memoryStore[`best_${targetEpoch}`]) {
-            memoryStore[`best_${targetEpoch}`] = { numeric: -1 };
-        }
+        // --- NEW: THE MEMORY VAULT (OVERWRITE MODE) ---
+        console.log(`🔥 Live Scan Update! Conf: ${displayConf}`);
+        
+        // Always overwrite with the newest scan!
+        memoryStore[`best_${targetEpoch}`] = {
+            pred: prediction,
+            conf: displayConf,
+            numeric: (numericConfidence - 1),
+            laterPrediction: laterPrediction,
+            laterMajorityProb: laterMajorityProb,
+            rsi: rsi,
+            currentMACD: currentMACD,
+            currentClose: currentClose
+        };
 
-        // If this new scan is better than our previous best, save it!
-        if (numericConfidence > memoryStore[`best_${targetEpoch}`].numeric) {
-            console.log(`🔥 New Best Found! Conf: ${displayConf}`);
-            memoryStore[`best_${targetEpoch}`] = {
-                pred: prediction,
-                conf: displayConf,
-                numeric: numericConfidence,
-                laterPrediction: laterPrediction,
-                laterMajorityProb: laterMajorityProb,
-                rsi: rsi,
-                currentMACD: currentMACD,
-                currentClose: currentClose
-            };
-        } else {
-            console.log(`📉 Scan yielded ${displayConf}. Keeping our stored best.`);
-        }
+        // Push the live scan straight to the UI!
+        await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPrediction, laterMajorityProb);
 
     } catch (e) {
         console.error("Brain Failed:", e);
@@ -376,8 +373,8 @@ async function lockInPrediction(targetEpoch) {
         console.error("❌ Early Supabase insert error:", error);
     }
 
-    // 3. Update visual stats including the new LATER values
-    await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, bestData.laterPrediction, bestData.laterMajorityProb);
+    // 3. Update visual stats including the new LATER values, and reset the LIVE prediction
+    await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, "NONE", "Calculating...", bestData.laterPrediction, bestData.laterMajorityProb);
 }
 
 
