@@ -184,14 +184,28 @@ async function generatePrediction(targetEpoch) {
         const currentClose = closes[closes.length - 1];
 
         
-        // RSI
+        // RSI (True Wilder's Smoothing to match TradingView)
         let gains = 0, losses = 0;
-        for(let i = closes.length - 14; i < closes.length; i++) {
+        
+        // 1. Get the initial Simple average for the first 14 periods to seed the formula
+        for(let i = 1; i <= 14; i++) {
             const diff = closes[i] - closes[i-1];
-            if (diff > 0) gains += diff; else losses += Math.abs(diff);
+            if (diff > 0) gains += diff; 
+            else losses += Math.abs(diff);
         }
-        const avgGain = gains / 14; 
-        const avgLoss = losses / 14;
+        let avgGain = gains / 14; 
+        let avgLoss = losses / 14;
+
+        // 2. Smooth it out exponentially for the remaining candles (Wilder's Method)
+        for(let i = 15; i < closes.length; i++) {
+            const diff = closes[i] - closes[i-1];
+            const currentGain = diff > 0 ? diff : 0;
+            const currentLoss = diff < 0 ? Math.abs(diff) : 0;
+            
+            avgGain = ((avgGain * 13) + currentGain) / 14;
+            avgLoss = ((avgLoss * 13) + currentLoss) / 14;
+        }
+
         let rsi = 100;
         if (avgLoss !== 0) rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
         else if (avgGain === 0) rsi = 50;
@@ -208,7 +222,7 @@ async function generatePrediction(targetEpoch) {
         // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data]; 
+            let emaArray = [data[0]]; // 🐛 FIX: Added [0] here!
             for (let i = 1; i < data.length; i++) {
                 emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             }
