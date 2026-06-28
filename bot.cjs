@@ -284,10 +284,10 @@ async function generatePrediction(targetEpoch) {
 
         // Existing Choppiness check
         let bbWidth = (upperBB - lowerBB) / sma;
-        let isChoppy = bbWidth < 0.0013;
+        let isChoppy = bbWidth < 0.0015;
 
         // --- 5. THE DECISION ENGINE ---
-        if (atrPercentage < 0.045 || isChoppy) {
+        if (atrPercentage < 0.05 || isChoppy) {
             // CHOP MARKET LOGIC: Mean reversion without overinflating confidence
             // If we are below the SMA, guess UP (bouncing back up to the mean)
             if (currentClose < sma) {
