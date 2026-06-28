@@ -510,25 +510,31 @@
                     }
                 }
         
-                    if (secondsLeft <= 0) { 
-                        text.innerText = "00:00"; 
-                        laterText.innerText = "~00:00";
-                        bar.style.width = "100%"; 
-                        clearInterval(timerInterval); 
+                if (secondsLeft <= 0) { 
+                    text.innerText = "00:00"; 
+                    laterText.innerText = "~00:00";
+                    bar.style.width = "100%"; 
+                    clearInterval(timerInterval); 
+                    
+                    // 🎂 Turn the loader ON instantly
+                    const overlay = document.getElementById('loader-overlay');
+                    if (overlay) {
+                        overlay.style.display = 'flex';
                         
-                        // 🎂 Turn the loader ON instantly
-                        const overlay = document.getElementById('loader-overlay');
-                        if (overlay) {
-                            overlay.style.display = 'flex';
-                            
-                            // 🛡️ Safe Failsafe: Turn it off automatically after 10 seconds if RPC lags
-                            setTimeout(() => {
-                                if (overlay.style.display === 'flex') {
-                                    overlay.style.display = 'none';
-                                }
-                            }, 10000);
-                        }
+                        // 🛡️ Safe Failsafe: Turn it off automatically after 10 seconds if RPC lags
+                        setTimeout(() => {
+                            if (overlay.style.display === 'flex') {
+                                overlay.style.display = 'none';
+                            }
+                        }, 10000);
                     }
+                } else {
+                    // 🕒 THE MISSING PIECE: This updates the timer on the screen!
+                    const formattedTime = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
+                    text.innerText = formattedTime;
+                    laterText.innerText = `~${formattedTime}`; 
+                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
+                }
             }, 1000);
         }
 
