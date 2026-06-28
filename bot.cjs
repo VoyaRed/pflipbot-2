@@ -349,22 +349,6 @@ async function generatePrediction(targetEpoch) {
             let tryPred = (ema9 >= ema21) ? "UP" : "DOWN"; 
             displayConf = `SKIP (Try: ${tryPred} ${finalConfidence})`;
         }
-        
-        // --- THE FIX: Use Net Score for true conviction ---
-        // If UP is 8 and DOWN is 7, netScore is 1 (Low conviction).
-        // If UP is 8 and DOWN is 0, netScore is 8 (High conviction).
-        let netScore = Math.abs(upScore - downScore);
-        
-        // Scale the net score realistically. (Max theoretical net is ~15)
-        // 15 * 3.25 = 48.75. Added to base 50 = max ~98.75%
-        let numericConfidence = Math.min(99.1, 50 + (netScore * 3.25));
-        let finalConfidence = numericConfidence.toFixed(1) + "%";
-        
-        let displayConf = finalConfidence;
-        if (prediction === "SKIP") {
-            let tryPred = (upScore >= downScore) ? "UP" : "DOWN";
-            displayConf = `SKIP (${tryPred} ${finalConfidence})`;
-        }
 
         // Calculate "Later" Likelihood
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
