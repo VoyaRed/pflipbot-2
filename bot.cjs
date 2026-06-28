@@ -18,7 +18,7 @@ let provider, contract;
 let lastEpochChecked = 0;
 let memoryStore = {};
 let lastScrapeTime = 0;
-const SCRAPE_INTERVAL = 23000; // Only scrape every 23 seconds
+const SCRAPE_INTERVAL = 22000; // Only scrape every 22 seconds
 
 async function findFastestRPC() {
     const nodes = [
@@ -94,8 +94,8 @@ async function checkRound() {
         }
     }
 
-     // 2. LOCK-IN at 25 seconds
-    if (secondsLeft <= 25 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
+     // 2. LOCK-IN at 30 seconds
+    if (secondsLeft <= 30 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
         console.log(`⏱️30s Threshold hit! Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
     }
