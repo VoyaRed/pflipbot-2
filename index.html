@@ -374,11 +374,16 @@
         const SUPABASE_ANON_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        let provider, contract, oracleContract, timerInterval;
-        let lastLockedPrice = 0;
-        let dynamicResultCache = {}; 
-        let lastSeenLiveEpoch = 0; 
-        let notifiedEpochs = new Set(); 
+            let provider, contract, oracleContract, timerInterval;
+            let lastLockedPrice = 0;
+            let dynamicResultCache = {}; 
+            let lastSeenLiveEpoch = 0; 
+            let notifiedEpochs = new Set(); 
+            
+            // Added to global scope so all functions can see them
+            let liveNextPred = "Waiting...";
+            let liveNextConf = "Calculating...";
+            let liveNextClass = "pred-waiting";
 
         async function init() {
             initTradingView(); 
@@ -536,10 +541,6 @@
                     setTimeout(() => { overlay.style.display = 'none'; }, 3000); 
                 }
                 lastSeenLiveEpoch = liveEpoch;
-
-                let liveNextPred = "Waiting...";
-                let liveNextConf = "Calculating...";
-                let liveNextClass = "pred-waiting";
 
                 // Header Texts
                 document.getElementById("later-epoch").innerText = `#${laterEpoch}`;
