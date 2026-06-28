@@ -510,17 +510,16 @@
                     }
                 }
         
-                if (secondsLeft <= 0) { 
-                    text.innerText = "00:00"; 
-                    laterText.innerText = "~00:00";
-                    bar.style.width = "100%"; 
-                    clearInterval(timerInterval); 
-                } else {
-                    const formattedTime = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
-                    text.innerText = formattedTime;
-                    laterText.innerText = `~${formattedTime}`; 
-                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
-                }
+                    if (secondsLeft <= 0) { 
+                        text.innerText = "00:00"; 
+                        laterText.innerText = "~00:00";
+                        bar.style.width = "100%"; 
+                        clearInterval(timerInterval); 
+                        
+                        // 🎂 NEW: Instantly trigger the loader overlay!
+                        const overlay = document.getElementById('loader-overlay');
+                        if (overlay) overlay.style.display = 'flex';
+                    }
             }, 1000);
         }
 
@@ -534,11 +533,15 @@
                 const prevEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
                 const oldPrevEpoch = currentEpoch > 2 ? currentEpoch - 3 : 0;
 
-                // Trigger flip animation if epoch advanced
+                // Hide flip animation when the new epoch successfully loads
                 if (lastSeenLiveEpoch !== 0 && liveEpoch > lastSeenLiveEpoch) {
                     const overlay = document.getElementById('loader-overlay');
-                    overlay.style.display = 'flex';
-                    setTimeout(() => { overlay.style.display = 'none'; }, 3000); 
+                    if (overlay) overlay.style.display = 'none'; 
+                }
+                
+                // Failsafe: If the RPC node lags, don't leave the user stuck staring at the cake forever
+                if (document.getElementById('loader-overlay').style.display === 'flex') {
+                    setTimeout(() => { document.getElementById('loader-overlay').style.display = 'none'; }, 10000);
                 }
                 lastSeenLiveEpoch = liveEpoch;
 
