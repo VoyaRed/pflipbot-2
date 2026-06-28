@@ -233,8 +233,6 @@ async function generatePrediction(targetEpoch) {
 
         // Scoring Logic
         let upScore = 0, downScore = 0;
-        let bbWidth = (upperBB - lowerBB) / sma;
-        let isChoppy = bbWidth < 0.0015;
 
         // Apply Historical Micro-trend weight
         if (recentUps >= 3) upScore += 1;
