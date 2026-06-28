@@ -266,13 +266,13 @@ async function generatePrediction(targetEpoch) {
 
         // Existing Choppiness check
         let bbWidth = (upperBB - lowerBB) / sma;
-        let isChoppy = bbWidth < 0.0013;
+        let isChoppy = bbWidth < 0.0015;
 
         // --- 5. THE DECISION ENGINE ---
-        if (atrPercentage < 0.04 || isChoppy) {
+        if (atrPercentage < 0.05 || isChoppy) {
             // Market is flat, highly unpredictable on 5m. Skip it.
-            upScore = Math.max(0, upScore - 2.0);
-            downScore = Math.max(0, downScore - 2.0);
+            upScore = Math.max(0, upScore - 4.0);
+            downScore = Math.max(0, downScore - 4.0;
         } else {
             // Trend Alignment (MACD & EMA)
             if (ema9 > ema21) upScore += 1.5;
@@ -293,11 +293,11 @@ async function generatePrediction(targetEpoch) {
             if (currentClose < lowerBB && rsi < 28) upScore += 4;
         }
 
-                // Determine Winner (Always trades, no SKIP logic)
+        // Determine Winner (Always trades, no SKIP logic)
         let prediction = (upScore >= downScore) ? "UP" : "DOWN";
         let winningScore = Math.max(upScore, downScore);
         
-                let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
+        let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         
         let displayConf = finalConfidence;
