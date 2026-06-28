@@ -538,7 +538,7 @@
             } catch (error) { console.warn("Sync Error:", error); } 
 
             // Failsafe regular loop just in case realtime drops connection
-            setTimeout(runSyncLoop, 12000); 
+            setTimeout(runSyncLoop, 300); 
         }
 
         // Helper to format actual bot prediction text and styling for SKIP handling
