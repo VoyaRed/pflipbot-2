@@ -342,14 +342,6 @@ async function generatePrediction(targetEpoch) {
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
 
-
-        // Calculate "Later" Likelihood
-        let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
-        laterUpProb = Math.max(10, Math.min(90, laterUpProb)); 
-        let laterDownProb = 100 - laterUpProb;
-        let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
-        let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
-
         // --- NEW: THE MEMORY VAULT (OVERWRITE MODE) ---
         console.log(`🔥 Live Scan Update! Conf: ${displayConf}`);
         
