@@ -53,27 +53,6 @@ async function startBot() {
     }
 }
 
-// --- ADD THIS LOGIC TO YOUR MAIN LOOP ---
-async function runBot() {
-    const roundData = await contract.rounds(currentEpoch);
-    const now = Math.floor(Date.now() / 1000);
-    const closeTimestamp = roundData.closeTimestamp.toNumber();
-    const secondsLeft = closeTimestamp - now;
-
-    // Only start scraping and deciding when we are at or below 75 seconds
-    if (secondsLeft <= 75) {
-        console.log(`⏱️ ${secondsLeft}s left. Starting analysis...`);
-        await findMarketDecision(); // Your existing analysis function
-    } else {
-        // Optional: Clear the dashboard while we wait
-        await supabaseClient
-            .from('market_stats')
-            .update({ current_pred: 'WAITING', current_conf: '0%' })
-            .eq('id', 1);
-            console.log(`⏳ Waiting... ${secondsLeft}s until close. Bot is sleeping.`);
-    }
-}
-
 async function runLoop() {
     try {
         await checkRound();
@@ -316,9 +295,15 @@ async function generatePrediction(targetEpoch) {
             if (currentClose < lowerBB && rsi < 28) upScore += 4;
         }
 
-        // Determine Winner (Always trades, no SKIP logic)
-        let prediction = (upScore >= downScore) ? "UP" : "DOWN";
-        let winningScore = Math.max(upScore, downScore);
+        // Determine Winner with functional SKIP logic
+let prediction;
+if (upScore === 0 && downScore === 0) {
+    prediction = "SKIP";
+} else {
+    prediction = (upScore >= downScore) ? "UP" : "DOWN";
+}
+let winningScore = Math.max(upScore, downScore);
+
         
         let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
