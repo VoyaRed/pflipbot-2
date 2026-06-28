@@ -365,7 +365,6 @@ async function lockInPrediction(targetEpoch) {
         result: 'PENDING',
         confidence: bestData.conf
         is_locked: true,        // Keeps your lock-in animation logic
-        label: 'FINAL CHOICE'
     }]);
     
     if (error) {
