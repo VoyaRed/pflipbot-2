@@ -262,7 +262,7 @@ async function generatePrediction(targetEpoch) {
         let isChoppy = bbWidth < 0.0015;
 
         // --- 5. THE DECISION ENGINE ---
-        if (atrPercentage < 0.06 || isChoppy) {
+        if (atrPercentage < 0.04 || isChoppy) {
             // Market is flat, highly unpredictable on 5m. Skip it.
             upScore = *0.5; downScore = *0.5;
         } else {
