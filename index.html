@@ -512,7 +512,11 @@
 
                 await updateMarketVisualsFromDB();
 
-                const { data } = await supabaseClient.from('prediction_logs').select('*').order('epoch_id', { ascending: false }).limit(25);
+                const { data, error } = await supabaseClient
+                .from('prediction_logs')
+                .select('*')
+                 .order('epoch_id', { ascending: false })
+                 .limit(10);
                 if (data) {
                     for (let log of data) {
                         if (log.epoch_id <= prevEpoch) {
@@ -538,7 +542,7 @@
             } catch (error) { console.warn("Sync Error:", error); } 
 
             // Failsafe regular loop just in case realtime drops connection
-            setTimeout(runSyncLoop, 300); 
+            setTimeout(runSyncLoop, 5000);
         }
 
         // Helper to format actual bot prediction text and styling for SKIP handling
