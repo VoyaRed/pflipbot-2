@@ -311,17 +311,22 @@ async function generatePrediction(targetEpoch) {
             if (currentClose < lowerBB && rsi < 28) upScore += 4;
         }
 
-        // Determine Winner with functional SKIP logic
-let prediction;
-if (upScore === 0 && downScore === 0) {
-    prediction = "SKIP";
-} else {
-    prediction = (upScore >= downScore) ? "UP" : "DOWN";
-}
-let winningScore = Math.max(upScore, downScore);
-
+                // Determine Winner with functional SKIP logic
+        let prediction;
+        if (upScore === 0 && downScore === 0) {
+            prediction = "SKIP";
+        } else {
+            prediction = (upScore >= downScore) ? "UP" : "DOWN";
+        }
         
-        let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
+        // --- THE FIX: Use Net Score for true conviction ---
+        // If UP is 8 and DOWN is 7, netScore is 1 (Low conviction).
+        // If UP is 8 and DOWN is 0, netScore is 8 (High conviction).
+        let netScore = Math.abs(upScore - downScore);
+        
+        // Scale the net score realistically. (Max theoretical net is ~15)
+        // 15 * 3.25 = 48.75. Added to base 50 = max ~98.75%
+        let numericConfidence = Math.min(99.1, 50 + (netScore * 3.25));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         
         let displayConf = finalConfidence;
@@ -329,6 +334,14 @@ let winningScore = Math.max(upScore, downScore);
             let tryPred = (upScore >= downScore) ? "UP" : "DOWN";
             displayConf = `SKIP (${tryPred} ${finalConfidence})`;
         }
+
+        // Calculate "Later" Likelihood
+        let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
+        laterUpProb = Math.max(10, Math.min(90, laterUpProb)); 
+        let laterDownProb = 100 - laterUpProb;
+        let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
+        let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
+
 
         // Calculate "Later" Likelihood
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
