@@ -288,10 +288,20 @@ async function generatePrediction(targetEpoch) {
 
         // --- 5. THE DECISION ENGINE ---
         if (atrPercentage < 0.05 || isChoppy) {
-            // Market is flat, highly unpredictable on 5m. Skip it.
-            upScore = Math.max(0, upScore - 2.5);
-            downScore = Math.max(0, downScore - 2.5);
+            // CHOP MARKET LOGIC: Mean reversion without overinflating confidence
+            // If we are below the SMA, guess UP (bouncing back up to the mean)
+            if (currentClose < sma) {
+                upScore += 1.0;
+            } 
+            // If we are above the SMA, guess DOWN (falling back to the mean)
+            else if (currentClose > sma) {
+                downScore += 1.0;
+            }
+            // By only adding 1.0 and skipping the heavy trend modifiers below,
+            // the netScore stays low, preventing inflated confidence percentages.
+            
         } else {
+            // TRENDING MARKET LOGIC
             // Trend Alignment (MACD & EMA)
             if (ema9 > ema21) upScore += 1.5;
             if (ema9 < ema21) downScore += 1.5;
@@ -299,18 +309,17 @@ async function generatePrediction(targetEpoch) {
             if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
 
             // Momentum (ROC Velocity)
-            if (roc3 > 0.15) upScore += 2.5; 
+            if (roc3 > 0.15) upScore += 2.5;
             if (roc3 < -0.15) downScore += 2.5; 
 
             // Price Action Reversals (Wicks)
-            if (upperWick > bodySize * 2) downScore += 3.5; // Huge rejection from top
-            if (lowerWick > bodySize * 2) upScore += 3.5; // Huge rejection from bottom
+            if (upperWick > bodySize * 2) downScore += 3.5;
+            if (lowerWick > bodySize * 2) upScore += 3.5;
 
             // Snap-Back Reversals (Extreme RSI + BB)
             if (currentClose > upperBB && rsi > 72) downScore += 4;
             if (currentClose < lowerBB && rsi < 28) upScore += 4;
         }
-
                 // Determine Winner with functional SKIP logic
         let prediction;
         if (upScore === 0 && downScore === 0) {
