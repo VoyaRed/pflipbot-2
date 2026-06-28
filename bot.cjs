@@ -18,7 +18,7 @@ let provider, contract;
 let lastEpochChecked = 0;
 let memoryStore = {};
 let lastScrapeTime = 0;
-const SCRAPE_INTERVAL = 60000; // Only scrape every 60 seconds
+const SCRAPE_INTERVAL = 30000; // Only scrape every 30 seconds
 
 async function findFastestRPC() {
     const nodes = [
@@ -72,10 +72,10 @@ async function checkRound() {
     const secondsLeft = lockTimestamp - now;
 
     // 0. RESET AT START OF NEW ROUND
-    // This ensures the database is wiped clean for the first ~4 minutes
-    if (secondsLeft > 75) {
+    // This ensures the database is wiped clean for the first 3 minutes
+    if (secondsLeft > 120) {
         if (!memoryStore[`cleared_${currentEpoch}`]) {
-            console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 75s mark...`);
+            console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 120s mark...`);
             await supabaseClient
                 .from('market_stats')
                 .update({ current_pred: 'NONE', current_conf: 'Calculating...' })
@@ -86,7 +86,7 @@ async function checkRound() {
 
     // 1. SCAN (Cache-aware & Stops after lock-in)
     // Notice the new "!memoryStore[`locked_${currentEpoch}`]" condition
-    if (secondsLeft > 0 && secondsLeft <= 75 && !memoryStore[`locked_${currentEpoch}`]) {
+    if (secondsLeft > 0 && secondsLeft <= 120 && !memoryStore[`locked_${currentEpoch}`]) {
         if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
             console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
             await generatePrediction(currentEpoch);
@@ -96,7 +96,7 @@ async function checkRound() {
 
      // 2. LOCK-IN at 20 seconds
     if (secondsLeft <= 20 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
-        console.log(`⏱️203s Threshold hit! Locking in Epoch #${currentEpoch}`);
+        console.log(`⏱️20s Threshold hit! Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
     }
 
