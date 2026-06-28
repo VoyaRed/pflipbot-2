@@ -516,9 +516,18 @@
                         bar.style.width = "100%"; 
                         clearInterval(timerInterval); 
                         
-                        // 🎂 NEW: Instantly trigger the loader overlay!
+                        // 🎂 Turn the loader ON instantly
                         const overlay = document.getElementById('loader-overlay');
-                        if (overlay) overlay.style.display = 'flex';
+                        if (overlay) {
+                            overlay.style.display = 'flex';
+                            
+                            // 🛡️ Safe Failsafe: Turn it off automatically after 10 seconds if RPC lags
+                            setTimeout(() => {
+                                if (overlay.style.display === 'flex') {
+                                    overlay.style.display = 'none';
+                                }
+                            }, 10000);
+                        }
                     }
             }, 1000);
         }
@@ -532,18 +541,13 @@
                 const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
                 const prevEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
                 const oldPrevEpoch = currentEpoch > 2 ? currentEpoch - 3 : 0;
-
-                // Hide flip animation when the new epoch successfully loads
+                // 1. Manage the loader overlay on epoch changes safely
                 if (lastSeenLiveEpoch !== 0 && liveEpoch > lastSeenLiveEpoch) {
                     const overlay = document.getElementById('loader-overlay');
-                    if (overlay) overlay.style.display = 'none'; 
+                    if (overlay) {
+                        overlay.style.display = 'none';
+                    }
                 }
-                
-                // Failsafe: If the RPC node lags, don't leave the user stuck staring at the cake forever
-                if (document.getElementById('loader-overlay').style.display === 'flex') {
-                    setTimeout(() => { document.getElementById('loader-overlay').style.display = 'none'; }, 10000);
-                }
-                lastSeenLiveEpoch = liveEpoch;
 
                 // Header Texts
                 document.getElementById("later-epoch").innerText = `#${laterEpoch}`;
