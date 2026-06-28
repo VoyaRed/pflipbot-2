@@ -476,6 +476,27 @@
                 }
             }
         }
+        function startTimer(targetTimestamp) {
+            clearInterval(timerInterval);
+            const bar = document.getElementById('progress-bar');
+            const text = document.getElementById('time-left');
+            const laterText = document.getElementById('later-time');
+        
+            timerInterval = setInterval(() => {
+                const secondsLeft = targetTimestamp - Math.floor(Date.now() / 1000);
+                if (secondsLeft <= 0) { 
+                    text.innerText = "00:00"; 
+                    laterText.innerText = "~00:00";
+                    bar.style.width = "100%"; 
+                    clearInterval(timerInterval); 
+                } else {
+                    const formattedTime = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
+                    text.innerText = formattedTime;
+                    laterText.innerText = `~${formattedTime}`; 
+                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
+                }
+            }, 1000);
+        }
 
         async function runSyncLoop() {
             try {
