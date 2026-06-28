@@ -288,44 +288,66 @@ async function generatePrediction(targetEpoch) {
 
         // --- 5. THE DECISION ENGINE ---
         if (atrPercentage < 0.05 || isChoppy) {
-            // CHOP MARKET LOGIC: Mean reversion without overinflating confidence
-            // If we are below the SMA, guess UP (bouncing back up to the mean)
+            // CHOP MARKET LOGIC: Decisive Mean Reversion
             if (currentClose < sma) {
-                upScore += 1.0;
-            } 
-            // If we are above the SMA, guess DOWN (falling back to the mean)
-            else if (currentClose > sma) {
-                downScore += 1.0;
+                upScore += 2.5;
+                if (rsi < 40) upScore += 1.5; 
+            } else if (currentClose > sma) {
+                downScore += 2.5;
+                if (rsi > 60) downScore += 1.5; 
             }
-            // By only adding 1.0 and skipping the heavy trend modifiers below,
-            // the netScore stays low, preventing inflated confidence percentages.
-            
         } else {
             // TRENDING MARKET LOGIC
             // Trend Alignment (MACD & EMA)
-            if (ema9 > ema21) upScore += 1.5;
-            if (ema9 < ema21) downScore += 1.5;
-            if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2;
-            if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2;
+            if (ema9 > ema21) upScore += 2.0;
+            if (ema9 < ema21) downScore += 2.0;
+            if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2.5;
+            if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2.5;
 
             // Momentum (ROC Velocity)
-            if (roc3 > 0.15) upScore += 2.5;
-            if (roc3 < -0.15) downScore += 2.5; 
+            if (roc3 > 0.15) upScore += 3.0;
+            if (roc3 < -0.15) downScore += 3.0; 
 
             // Price Action Reversals (Wicks)
             if (upperWick > bodySize * 2) downScore += 3.5;
             if (lowerWick > bodySize * 2) upScore += 3.5;
 
             // Snap-Back Reversals (Extreme RSI + BB)
-            if (currentClose > upperBB && rsi > 72) downScore += 4;
-            if (currentClose < lowerBB && rsi < 28) upScore += 4;
+            if (currentClose > upperBB && rsi > 72) downScore += 4.5;
+            if (currentClose < lowerBB && rsi < 28) upScore += 4.5;
         }
-                // Determine Winner with functional SKIP logic
+
+        let netScore = Math.abs(upScore - downScore);
         let prediction;
-        if (upScore === 0 && downScore === 0) {
+
+        // --- SUPER CHOPPY SKIP LOGIC ---
+        // Only skip if volatility is extremely low AND neither side has a strong lead
+        if ((atrPercentage < 0.04 || bbWidth < 0.0012) && netScore <= 2.0) {
             prediction = "SKIP";
         } else {
-            prediction = (upScore >= downScore) ? "UP" : "DOWN";
+            // --- TIE-BREAKER ---
+            // If it's not a skip, we MUST break any ties to ensure a bet is placed
+            if (upScore === downScore) {
+                if (ema9 >= ema21) {
+                    upScore += 1.5; 
+                } else {
+                    downScore += 1.5; 
+                }
+                netScore = Math.abs(upScore - downScore); // Recalculate net score
+            }
+            prediction = (upScore > downScore) ? "UP" : "DOWN";
+        }
+        
+        // --- TRUE CONVICTION SCALING ---
+        let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
+        let finalConfidence = numericConfidence.toFixed(1) + "%";
+        
+        let displayConf = finalConfidence;
+        
+        // Format the UI display if it does decide to skip
+        if (prediction === "SKIP") {
+            let tryPred = (ema9 >= ema21) ? "UP" : "DOWN"; 
+            displayConf = `SKIP (Try: ${tryPred} ${finalConfidence})`;
         }
         
         // --- THE FIX: Use Net Score for true conviction ---
