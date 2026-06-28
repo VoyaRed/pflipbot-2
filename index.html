@@ -18,6 +18,17 @@
         }
         .cake-flip { font-size: 80px; animation: flip 1s infinite linear; }
         @keyframes flip { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+
+        @keyframes lockPop {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); box-shadow: 0 0 20px var(--primary); }
+        100% { transform: scale(1); }
+        }
+    
+.locked-animation { 
+    animation: lockPop 0.6s ease-out; 
+    border: 3px solid var(--primary) !important; 
+}
         
         :root { 
             --bg: #fff0f5; --panel: #ffffff; --up: #31d0aa; --down: #ed4b9e; 
@@ -621,6 +632,14 @@
 
 
             // --- ANIMATION TRIGGERS ---
+            if (liveLog && liveLog.is_locked) {
+                const liveCard = document.querySelector('.card.live');
+                if (liveCard && !liveCard.classList.contains('locked-animation')) {
+                    liveCard.classList.add('locked-animation');
+                    // Optional: Add a 'padlock' icon text inside the header
+                    document.querySelector('.live .card-header span:first-child').innerText = '🔒 LOCKED';
+                }
+            }
             if (prevLog && prevLog.result && officialStatuses.includes(prevLog.result)) {
                 if (!notifiedEpochs.has(prevEpoch)) {
                     if (prevLog.result === 'WIN' || prevLog.result === 'SKIP/UP') {
