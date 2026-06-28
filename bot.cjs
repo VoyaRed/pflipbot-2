@@ -73,9 +73,9 @@ async function checkRound() {
 
     // 0. RESET AT START OF NEW ROUND
     // This ensures the database is wiped clean for the first 3 minutes
-    if (secondsLeft > 100) {
+    if (secondsLeft > 102) {
         if (!memoryStore[`cleared_${currentEpoch}`]) {
-            console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 100s mark...`);
+            console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
             await supabaseClient
                 .from('market_stats')
                 .update({ current_pred: 'NONE', current_conf: 'Calculating...' })
@@ -86,7 +86,7 @@ async function checkRound() {
 
     // 1. SCAN (Cache-aware & Stops after lock-in)
     // Notice the new "!memoryStore[`locked_${currentEpoch}`]" condition
-    if (secondsLeft > 0 && secondsLeft <= 100 && !memoryStore[`locked_${currentEpoch}`]) {
+    if (secondsLeft > 0 && secondsLeft <= 102 && !memoryStore[`locked_${currentEpoch}`]) {
         if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
             console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
             await generatePrediction(currentEpoch);
