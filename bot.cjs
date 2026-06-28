@@ -70,10 +70,19 @@ async function checkRound() {
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
     
-    if (!memoryStore[`pred_${nextEpoch}`] && secondsLeft > 0 && secondsLeft <= 75) {
-        console.log(`\n⏳ Epoch #${nextEpoch} is closing in ${secondsLeft}s. Analyzing market...`);
-        await generatePrediction(nextEpoch);
-    }
+            // 1. Continuous Scanning (Every 20s within the 75s window)
+        const lastEval = memoryStore[`lastEval_${nextEpoch}`] || 0;
+        
+        if (secondsLeft > 0 && secondsLeft <= 75 && (now - lastEval) >= 20) {
+            memoryStore[`lastEval_${nextEpoch}`] = now;
+            console.log(`\n⏳ Epoch #${nextEpoch} locks in ${secondsLeft}s. Scanning for highest confidence...`);
+            await generatePrediction(nextEpoch);
+        }
+        // 2. Lock it in! (Once the timer hits 0 and the round is live)
+        else if (secondsLeft <= 0 && memoryStore[`best_${nextEpoch}`] && !memoryStore[`locked_${nextEpoch}`]) {
+            await lockInPrediction(nextEpoch);
+        }
+
 
     // 2. Continually Verify ALL pending expired rounds
     try {
@@ -287,52 +296,88 @@ async function generatePrediction(targetEpoch) {
         let prediction = (upScore >= downScore) ? "UP" : "DOWN";
         let winningScore = Math.max(upScore, downScore);
         
-        let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
+                let numericConfidence = Math.min(99.1, 50 + (winningScore * 8.5));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
-
-        // Webhook Alert (Only fires if confidence is 75% or higher)
-        if (numericConfidence >= 65.0) {
-            const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
-            fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: "Cake Alert Bot 🍰",
-                    content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${prediction}**\nConfidence: **${finalConfidence}**`
-                })
-            }).catch(err => console.error("Failed to send webhook:", err));
+        
+        let displayConf = finalConfidence;
+        if (prediction === "SKIP") {
+            let tryPred = (upScore >= downScore) ? "UP" : "DOWN";
+            displayConf = `SKIP (${tryPred} ${finalConfidence})`;
         }
 
-
-
-        // --- NEW: CALCULATE "LATER" LIKELIHOOD ---
-        // Uses EMA distance, RSI divergence, and recent blockchain trend
+        // Calculate "Later" Likelihood
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
-        laterUpProb = Math.max(10, Math.min(90, laterUpProb)); // Clamp between 10% and 90%
+        laterUpProb = Math.max(10, Math.min(90, laterUpProb)); 
         let laterDownProb = 100 - laterUpProb;
-        
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
 
-        memoryStore[`pred_${targetEpoch}`] = { pred: prediction, conf: displayConf };
-        console.log(`🤖 [Epoch ${targetEpoch}] Decision: ${prediction} (Conf: ${displayConf})`);
-        console.log(`🔮 [Later Epoch Likelihood]: ${laterPrediction} ${laterMajorityProb}%`);
+        // --- NEW: THE MEMORY VAULT ---
+        // Create an empty vault for this epoch if it doesn't exist
+        if (!memoryStore[`best_${targetEpoch}`]) {
+            memoryStore[`best_${targetEpoch}`] = { numeric: -1 };
+        }
 
-        // Insert into Supabase
-        const { error } = await supabaseClient.from('prediction_logs').insert([{ 
-            epoch_id: targetEpoch, 
-            predicted_side: prediction, 
-            result: 'PENDING',
-            confidence: displayConf
-        }]);
-        if (error) console.error("❌ Early Supabase insert error:", error);
+        // If this new scan is better than our previous best, save it!
+        if (numericConfidence > memoryStore[`best_${targetEpoch}`].numeric) {
+            console.log(`🔥 New Best Found! Conf: ${displayConf}`);
+            memoryStore[`best_${targetEpoch}`] = {
+                pred: prediction,
+                conf: displayConf,
+                numeric: numericConfidence,
+                laterPrediction: laterPrediction,
+                laterMajorityProb: laterMajorityProb,
+                rsi: rsi,
+                currentMACD: currentMACD,
+                currentClose: currentClose
+            };
+        } else {
+            console.log(`📉 Scan yielded ${displayConf}. Keeping our stored best.`);
+        }
 
-        // Update visual stats including the new LATER values
-        await updateMarketStats(rsi, currentMACD, currentClose, laterPrediction, laterMajorityProb);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
 }
+
+async function lockInPrediction(targetEpoch) {
+    const bestData = memoryStore[`best_${targetEpoch}`];
+    if (!bestData || bestData.numeric === -1) return;
+
+    // Mark it as locked so we don't spam the database
+    memoryStore[`locked_${targetEpoch}`] = true;
+
+    console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.pred} (${bestData.conf})`);
+
+    // 1. Webhook Alert (Only fires if confidence is 75% or higher)
+    if (bestData.pred !== "SKIP" && bestData.numeric >= 75.0) {
+        const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
+        fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: "Cake Alert Bot 🍰",
+                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${bestData.pred}**\nConfidence: **${bestData.conf}**`
+            })
+        }).catch(err => console.error("Failed to send webhook:", err));
+    }
+
+    // 2. Insert into Supabase (This triggers your UI)
+    const { error } = await supabaseClient.from('prediction_logs').insert([{ 
+        epoch_id: targetEpoch, 
+        predicted_side: bestData.pred, 
+        result: 'PENDING',
+        confidence: bestData.conf
+    }]);
+    
+    if (error) {
+        console.error("❌ Early Supabase insert error:", error);
+    }
+
+    // 3. Update visual stats including the new LATER values
+    await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, bestData.laterPrediction, bestData.laterMajorityProb);
+}
+
 
 async function verifyResult(epochToCheck) {
     try {
