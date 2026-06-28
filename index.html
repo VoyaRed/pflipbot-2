@@ -391,8 +391,12 @@
                         console.log("⚡ Realtime: Result updated!");
                         runSyncLoop();
                     })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'market_stats' }, payload => {
+                        console.log("⚡ Realtime: Live scan updated!");
+                        runSyncLoop(); // Instantly refresh the UI!
+                    })
                     .subscribe();
-
+                
                 runSyncLoop();
             } catch (error) { 
                 console.error("Initialization failed, retrying in 5s...");
@@ -433,6 +437,23 @@
                     laterBadge.innerText = `${data.later_pred} ${data.later_conf}%`;
                     laterBadge.className = `prediction-badge pred-${data.later_pred.toLowerCase()}`;
                 }
+
+                // CAPTURE THE LIVE NEXT PREDICTION
+                if (data.current_pred && data.current_pred !== "NONE") {
+                    liveNextPred = data.current_pred;
+                    liveNextConf = data.current_conf;
+                    if (data.current_pred === "SKIP") {
+                        if (data.current_conf.includes("UP")) liveNextClass = "pred-skip-up";
+                        else if (data.current_conf.includes("DOWN")) liveNextClass = "pred-skip-down";
+                        else liveNextClass = "pred-waiting";
+                    } else {
+                        liveNextClass = `pred-${data.current_pred.toLowerCase()}`;
+                    }
+                } else {
+                    liveNextPred = "Waiting...";
+                    liveNextConf = "Calculating...";
+                    liveNextClass = "pred-waiting";
+                }
             }
         }
 
@@ -453,6 +474,10 @@
                     setTimeout(() => { overlay.style.display = 'none'; }, 3000); 
                 }
                 lastSeenLiveEpoch = liveEpoch;
+
+                let liveNextPred = "Waiting...";
+                let liveNextConf = "Calculating...";
+                let liveNextClass = "pred-waiting";
 
                 // Header Texts
                 document.getElementById("later-epoch").innerText = `#${laterEpoch}`;
@@ -657,9 +682,9 @@
                 document.getElementById('next-conf').innerText = nextLog.confidence;
             } else {
                 const predEl = document.getElementById('bot-prediction');
-                predEl.innerText = 'Waiting...';
-                predEl.className = 'prediction-badge pred-waiting';
-                document.getElementById('next-conf').innerText = 'Calculating...';
+                predEl.innerText = liveNextPred;
+                predEl.className = `prediction-badge ${liveNextClass}`;
+                document.getElementById('next-conf').innerText = liveNextConf;
             }
         }
         
