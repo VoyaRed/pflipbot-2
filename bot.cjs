@@ -363,7 +363,7 @@ async function lockInPrediction(targetEpoch) {
         epoch_id: targetEpoch, 
         predicted_side: bestData.pred, 
         result: 'PENDING',
-        confidence: bestData.conf
+        confidence: bestData.conf,
         is_locked: true,        // Keeps your lock-in animation logic
     }]);
     
