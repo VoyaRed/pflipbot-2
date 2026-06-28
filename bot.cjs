@@ -230,9 +230,6 @@ async function generatePrediction(targetEpoch) {
         if (recentDowns === 5) downScore += 1.5;
 
         // --- 1. EXTENDED CANDLE DATA (Needed for Wicks) ---
-        const opens = candles.map(c => parseFloat(c[1]));
-        const highs = candles.map(c => parseFloat(c[2]));
-        const lows = candles.map(c => parseFloat(c[3]));
         
         // --- 2. PRICE ACTION (Wick Analysis) ---
         const prevOpen = opens[opens.length - 2];
