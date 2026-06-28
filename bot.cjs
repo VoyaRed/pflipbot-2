@@ -62,35 +62,39 @@ async function runLoop() {
 
 async function checkRound() {
     const currentEpoch = (await contract.currentEpoch()).toNumber();
-    const nextEpoch = currentEpoch;
-
-    // 1. Predict the NEXT round
-    const nextRoundData = await contract.rounds(nextEpoch);
+    
+    // --- 1. SCAN THE CURRENT ROUND ---
+    const nextRoundData = await contract.rounds(currentEpoch);
     const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
-    
-            // 1. Continuous Scanning (Every 20s within the 75s window)
-        const lastEval = memoryStore[`lastEval_${nextEpoch}`] || 0;
-        
-        if (secondsLeft > 0 && secondsLeft <= 75 && (now - lastEval) >= 20) {
-            memoryStore[`lastEval_${nextEpoch}`] = now;
-            console.log(`\n⏳ Epoch #${nextEpoch} locks in ${secondsLeft}s. Scanning for highest confidence...`);
-            await generatePrediction(nextEpoch);
-        }
-        // 2. Lock it in! (Once the timer hits 0 and the round is live)
-        else if (secondsLeft <= 0 && memoryStore[`best_${nextEpoch}`] && !memoryStore[`locked_${nextEpoch}`]) {
-            await lockInPrediction(nextEpoch);
-        }
 
+    // Continuous Scanning (Every 20s within the 75s window)
+    const lastEval = memoryStore[`lastEval_${currentEpoch}`] || 0;
+    if (secondsLeft > 0 && secondsLeft <= 75 && (now - lastEval) >= 20) {
+        memoryStore[`lastEval_${currentEpoch}`] = now;
+        console.log(`\n⏳ Epoch #${currentEpoch} locks in ${secondsLeft}s. Scanning for highest confidence...`);
+        await generatePrediction(currentEpoch);
+    }
 
-    // 2. Continually Verify ALL pending expired rounds
+    // --- 2. LOCK IN THE PREDICTION ---
+    // If the contract just rolled over to a new round, lock in the previous one!
+    const justLockedEpoch = currentEpoch - 1;
+    if (memoryStore[`best_${justLockedEpoch}`] && !memoryStore[`locked_${justLockedEpoch}`]) {
+        await lockInPrediction(justLockedEpoch);
+    }
+    // Safety catch: If the timer hit 0 but the contract hasn't rolled over yet
+    if (secondsLeft <= 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
+        await lockInPrediction(currentEpoch);
+    }
+
+    // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
     try {
         const { data: pendingLogs } = await supabaseClient
             .from('prediction_logs')
             .select('epoch_id')
             .eq('result', 'PENDING');
-            
+
         if (pendingLogs && pendingLogs.length > 0) {
             for (let log of pendingLogs) {
                 if (log.epoch_id <= currentEpoch - 2) {
