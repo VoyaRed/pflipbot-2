@@ -69,15 +69,16 @@ async function checkRound() {
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
 
-    // Continuous Scanning (Every 20s within the 75s window)
-    const lastEval = memoryStore[`lastEval_${currentEpoch}`] || 0;
-    if (secondsLeft > 0 && secondsLeft <= 75 && (now - lastEval) >= 20) {
-        memoryStore[`lastEval_${currentEpoch}`] = now;
-        console.log(`\n⏳ Epoch #${currentEpoch} locks in ${secondsLeft}s. Scanning for highest confidence...`);
-        await generatePrediction(currentEpoch);
+    // 1. SCAN (Cache-aware)
+    if (secondsLeft > 0 && secondsLeft <= 75) {
+        if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
+            console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
+            await generatePrediction(currentEpoch);
+            lastScrapeTime = Date.now();
+        }
     }
 
-     // --- 2. LOCK IN THE PREDICTION ---
+     // 2. LOCK-IN at 13 seconds
     if (secondsLeft <= 13 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
         console.log(`⏱️ 13s Threshold hit! Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
@@ -351,8 +352,8 @@ async function lockInPrediction(targetEpoch) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                username: "Cake Alert Bot 🍰",
-                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${bestData.pred}**\nConfidence: **${bestData.conf}**`
+            username: "Cake Alert Bot 🍰",
+            content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${bestData.pred}**\nConfidence: **${bestData.conf}**`
             })
         }).catch(err => console.error("Failed to send webhook:", err));
     }
@@ -363,6 +364,8 @@ async function lockInPrediction(targetEpoch) {
         predicted_side: bestData.pred, 
         result: 'PENDING',
         confidence: bestData.conf
+        is_locked: true,        // Keeps your lock-in animation logic
+        label: 'FINAL CHOICE'
     }]);
     
     if (error) {
