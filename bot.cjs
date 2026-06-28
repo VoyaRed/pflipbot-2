@@ -17,6 +17,8 @@ const ABI = [
 let provider, contract;
 let lastEpochChecked = 0;
 let memoryStore = {};
+let lastScrapeTime = 0;
+const SCRAPE_INTERVAL = 20000; // Only scrape every 20 seconds
 
 async function findFastestRPC() {
     const nodes = [
