@@ -71,8 +71,22 @@ async function checkRound() {
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
 
-    // 1. SCAN (Cache-aware)
-    if (secondsLeft > 0 && secondsLeft <= 75) {
+    // 0. RESET AT START OF NEW ROUND
+    // This ensures the database is wiped clean for the first ~4 minutes
+    if (secondsLeft > 75) {
+        if (!memoryStore[`cleared_${currentEpoch}`]) {
+            console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 75s mark...`);
+            await supabaseClient
+                .from('market_stats')
+                .update({ current_pred: 'NONE', current_conf: 'Calculating...' })
+                .eq('id', 1);
+            memoryStore[`cleared_${currentEpoch}`] = true;
+        }
+    }
+
+    // 1. SCAN (Cache-aware & Stops after lock-in)
+    // Notice the new "!memoryStore[`locked_${currentEpoch}`]" condition
+    if (secondsLeft > 0 && secondsLeft <= 75 && !memoryStore[`locked_${currentEpoch}`]) {
         if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
             console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
             await generatePrediction(currentEpoch);
@@ -87,6 +101,8 @@ async function checkRound() {
     }
 
     // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
+    // (Keep your existing verification code down here...)
+
     if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
     try {
         const { data: pendingLogs } = await supabaseClient
