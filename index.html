@@ -478,8 +478,9 @@
                     liveNextPred = data.current_pred;
                     liveNextConf = data.current_conf;
                     if (data.current_pred === "SKIP") {
-                        if (data.current_conf.includes("UP")) liveNextClass = "pred-skip-up";
-                        else if (data.current_conf.includes("DOWN")) liveNextClass = "pred-skip-down";
+                        // 🐛 FIX: Added safety checks to ensure current_conf isn't null!
+                        if (data.current_conf && data.current_conf.includes("UP")) liveNextClass = "pred-skip-up";
+                        else if (data.current_conf && data.current_conf.includes("DOWN")) liveNextClass = "pred-skip-down";
                         else liveNextClass = "pred-waiting";
                     } else {
                         liveNextClass = `pred-${data.current_pred.toLowerCase()}`;
