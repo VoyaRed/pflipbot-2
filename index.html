@@ -34,10 +34,10 @@
         100% { transform: scale(1); }
         }
     
-.locked-animation { 
-    animation: lockPop 0.6s ease-out; 
-    border: 3px solid var(--primary) !important; 
-}
+        .locked-animation { 
+            animation: lockPop 0.6s ease-out; 
+            border: 3px solid var(--primary) !important; 
+        }
         
         :root { 
             --bg: #fff0f5; --panel: #ffffff; --up: #31d0aa; --down: #ed4b9e; 
@@ -335,6 +335,7 @@
         // --- THEME TOGGLE LOGIC ---
         const themeBtn = document.getElementById('theme-toggle');
         const currentTheme = localStorage.getItem('cakeTheme') || 'light';
+        window.hasAnimatedLock = false;
         if (currentTheme === 'dark') {
             document.body.classList.add('dark-mode');
             themeBtn.innerText = '☀️ Strawberry Vanilla';
@@ -485,16 +486,25 @@
         
             timerInterval = setInterval(() => {
                 const secondsLeft = targetTimestamp - Math.floor(Date.now() / 1000);
-                if (secondsLeft <= 0) { 
-                    text.innerText = "00:00"; 
-                    laterText.innerText = "~00:00";
-                    bar.style.width = "100%"; 
-                    clearInterval(timerInterval); 
-                } else {
-                    const formattedTime = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
-                    text.innerText = formattedTime;
-                    laterText.innerText = `~${formattedTime}`; 
-                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
+                const liveCard = document.querySelector('.card.live');
+
+                if (liveCard) {
+                    // Check if we hit the 13-second mark
+                    if (secondsLeft === 13 && !window.hasAnimatedLock) {
+                        console.log("⏱️ 13-second mark reached! Triggering Lock-In Animation.");
+                        
+                        // Add the CSS class to trigger the animation
+                        liveCard.classList.add('locked-animation');
+                        
+                        // Set the flag to true so it doesn't loop/re-trigger
+                        window.hasAnimatedLock = true;
+                    }
+                    
+                    // Reset the animation flag if the round restarts (e.g., secondsLeft resets to 300)
+                    if (secondsLeft > 280) {
+                        window.hasAnimatedLock = false;
+                        liveCard.classList.remove('locked-animation');
+                    }
                 }
             }, 1000);
         }
