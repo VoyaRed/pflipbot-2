@@ -486,25 +486,35 @@
         
             timerInterval = setInterval(() => {
                 const secondsLeft = targetTimestamp - Math.floor(Date.now() / 1000);
-                const liveCard = document.querySelector('.card.live');
-
-                if (liveCard) {
+                
+                // --- CHANGED: Target the 'next' card, not the 'live' card ---
+                const nextCard = document.querySelector('.card.next:not(.later-card)');
+        
+                if (nextCard) {
                     // Check if we hit the 13-second mark
                     if (secondsLeft === 13 && !window.hasAnimatedLock) {
-                        console.log("⏱️ 13-second mark reached! Triggering Lock-In Animation.");
-                        
-                        // Add the CSS class to trigger the animation
-                        liveCard.classList.add('locked-animation');
-                        
-                        // Set the flag to true so it doesn't loop/re-trigger
+                        console.log("⏱️ 13-second mark reached! Locking in FINAL choice.");
+                        nextCard.classList.add('locked-animation');
                         window.hasAnimatedLock = true;
                     }
                     
-                    // Reset the animation flag if the round restarts (e.g., secondsLeft resets to 300)
+                    // Reset the animation flag for the next round
                     if (secondsLeft > 280) {
                         window.hasAnimatedLock = false;
-                        liveCard.classList.remove('locked-animation');
+                        nextCard.classList.remove('locked-animation');
                     }
+                }
+        
+                if (secondsLeft <= 0) { 
+                    text.innerText = "00:00"; 
+                    laterText.innerText = "~00:00";
+                    bar.style.width = "100%"; 
+                    clearInterval(timerInterval); 
+                } else {
+                    const formattedTime = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
+                    text.innerText = formattedTime;
+                    laterText.innerText = `~${formattedTime}`; 
+                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
                 }
             }, 1000);
         }
@@ -739,14 +749,16 @@
 
             // 4. Update Next with auto-refresh fallbacks
             if (nextLog) {
+                // 🔒 AT 13 SECONDS: The bot inserted into prediction_logs! This is the FINAL choice.
                 const betInfo = getActualBetInfo(nextLog);
                 const predEl = document.getElementById('bot-prediction');
-                predEl.innerText = betInfo.text;
+                predEl.innerText = `🔒 FINAL: ${betInfo.text}`; // Added FINAL prefix
                 predEl.className = `prediction-badge ${betInfo.class}`;
                 document.getElementById('next-conf').innerText = nextLog.confidence;
             } else {
+                // ⏳ BEFORE 13 SECONDS: The bot is updating market_stats every 20s. These are estimates.
                 const predEl = document.getElementById('bot-prediction');
-                predEl.innerText = liveNextPred;
+                predEl.innerText = `⏳ EST: ${liveNextPred}`; // Added EST prefix
                 predEl.className = `prediction-badge ${liveNextClass}`;
                 document.getElementById('next-conf').innerText = liveNextConf;
             }
