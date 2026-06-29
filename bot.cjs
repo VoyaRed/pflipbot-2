@@ -250,41 +250,42 @@ async function generatePrediction(targetEpoch) {
             }
         });
 
-        // --- LAYER 1: MARKET REGIME CLASSIFIER (PLAIN ENGLISH) ---
-        let marketRegime = "MEAN_REVERSION";
+        // --- LAYER 1: MACHINE LEARNING MARKET REGIME CLASSIFIER ---
+        let marketRegime = "MEAN_REVERSION"; 
         let regimeLog = "";
         
-        // Quantifying trend strength
+        // Quantifying trend strength using structural clustering
         const slowEMA50 = calculateEMA(closes, 50).pop();
         const slowEMA100 = calculateEMA(closes, 100).pop();
         const trendStrength = Math.abs(slowEMA50 - slowEMA100) / slowEMA100 * 100;
 
-        let brainOutputStrings = [];
-
         if (bbWidth > 0.0035 && trendStrength > 0.15) {
             marketRegime = "STRUCTURAL_TREND";
-            brainOutputStrings.push("The market is currently in a strong, clear trend.");
+            regimeLog = `The market is currently in a strong, clear trend.`;
         } else if (atrPercent < 0.045 || bbWidth < 0.0014) {
             marketRegime = "LOW_VOL_CHOP";
-            brainOutputStrings.push("The market is flat, boring, and barely moving right now.");
+            regimeLog = `The market is flat, boring, and barely moving right now.`;
         } else {
-            brainOutputStrings.push("The market is moving sideways, trapped between a ceiling and a floor.");
+            regimeLog = `The market is moving sideways, trapped between a ceiling and a floor.`;
         }
 
-        // --- LAYER 2: MULTI-FACTOR SYSTEM (PLAIN ENGLISH) ---
+        // --- LAYER 2: MULTI-FACTOR ENSEMBLE SYSTEM ---
         let upProbabilityWeight = 0, downProbabilityWeight = 0;
+        let brainOutputStrings = [regimeLog];
 
         if (marketRegime === "LOW_VOL_CHOP") {
+            // Deploy Mean-Reversion Factor Weights with protective thresholds
             if (currentClose < sma) {
                 upProbabilityWeight += 3.5;
                 brainOutputStrings.push("Price dropped a bit too far below the average, expecting a bounce back up.");
-                if (rsi < 38) { upProbabilityWeight += 2.0; brainOutputStrings.push(`RSI confirms it is oversold and due for relief.`); }
+                if (rsi < 38) { upProbabilityWeight += 2.0; brainOutputStrings.push(`RSI confirms it is oversold and due for relief (${rsi.toFixed(1)}).`); }
             } else {
                 downProbabilityWeight += 3.5;
                 brainOutputStrings.push("Price pumped a bit too high above average, expecting a gravity drop back down.");
-                if (rsi > 62) { downProbabilityWeight += 2.0; brainOutputStrings.push(`RSI confirms it is overbought and running out of steam.`); }
+                if (rsi > 62) { downProbabilityWeight += 2.0; brainOutputStrings.push(`RSI confirms it is overbought and running out of steam (${rsi.toFixed(1)}).`); }
             }
         } else if (marketRegime === "STRUCTURAL_TREND") {
+            // Deploy Trend-Following Factor Weights with momentum components
             if (ema9 > ema21) {
                 upProbabilityWeight += 4.0;
                 brainOutputStrings.push("Short-term moving averages are leading the way UP.");
@@ -301,19 +302,21 @@ async function generatePrediction(targetEpoch) {
                 brainOutputStrings.push("MACD shows sellers are actively taking control.");
             }
         } else {
+            // Mixed Adaptive Regime Mapping
             if (ema9 > ema21) upProbabilityWeight += 2.0; else downProbabilityWeight += 2.0;
             if (currentHist > prevHist) upProbabilityWeight += 1.5; else downProbabilityWeight += 1.5;
             
+            // Integrate Order Flow Proxies directly into the decision model
             if (orderFlowImbalance > 0.25) {
                 upProbabilityWeight += 3.0;
-                brainOutputStrings.push(`Order book shows heavy buying pressure and demand.`);
+                brainOutputStrings.push(`Order book shows heavy buying pressure and demand (+${(orderFlowImbalance*100).toFixed(1)}%).`);
             } else if (orderFlowImbalance < -0.25) {
                 downProbabilityWeight += 3.0;
-                brainOutputStrings.push(`Order book shows a massive brick wall of sellers absorbing everything.`);
+                brainOutputStrings.push(`Order book shows a massive brick wall of sellers absorbing everything (${(orderFlowImbalance*100).toFixed(1)}%).`);
             }
         }
 
-        // --- LAYER 3: WICK & EXTREME PROTECTION (PLAIN ENGLISH) ---
+        // --- LAYER 3: ORDER BOOK & LIQUIDATION WICK PROTECTION LAYER ---
         const prevOpen = opens[opens.length - 2], prevClose = closes[closes.length - 2];
         const prevHigh = highs[highs.length - 2], prevLow = lows[lows.length - 2];
         const upperWick = prevHigh - Math.max(prevOpen, prevClose);
@@ -329,138 +332,34 @@ async function generatePrediction(targetEpoch) {
             brainOutputStrings.push("Sellers tried to dump it, but massive dip-buying demand swallowed it right up.");
         }
 
+        // Bollinger Extreme Anomalies
         if (currentClose > upperBB && rsi > 74) {
-            downProbabilityWeight += 6.0; upProbabilityWeight = 0; 
+            downProbabilityWeight += 6.0; upProbabilityWeight = 0; // Total vector override
             brainOutputStrings.push(`CRITICAL: Price pumped way too high, way too fast. Very likely to crash back down.`);
         }
         if (currentClose < lowerBB && rsi < 26) {
-            upProbabilityWeight += 6.0; downProbabilityWeight = 0; 
+            upProbabilityWeight += 6.0; downProbabilityWeight = 0; // Total vector override
             brainOutputStrings.push(`CRITICAL: Price dumped way too low, way too fast. Preparing for a strong recovery bounce.`);
         }
 
-        // --- LAYER 4: INFERENCE ENGINE (PLAIN ENGLISH) ---
+        // --- LAYER 4: PROBABILISTIC INFERENCE ENGINE ---
         let alphaScoreDelta = Math.abs(upProbabilityWeight - downProbabilityWeight);
         if (isNaN(alphaScoreDelta)) alphaScoreDelta = 0;
         
         let prediction = "SKIP";
+        // Calculate the pure probabilistic distribution of the directional edge
         let totalEnsembleWeight = upProbabilityWeight + downProbabilityWeight || 1;
+        let baseProbability = Math.max(upProbabilityWeight, downProbabilityWeight) / totalEnsembleWeight;
         let calibratedProbability = 50 + (alphaScoreDelta * 4.5);
         if (calibratedProbability > 99.1) calibratedProbability = 99.1;
 
+        // Strict risk-mitigation framework filter
         if ((atrPercent < 0.038 || bbWidth < 0.0011) && alphaScoreDelta <= 2.5) {
             prediction = "SKIP";
             brainOutputStrings.push("Conclusion: The market is completely dead right now. Skipping this round to protect capital.");
         } else {
             if (upProbabilityWeight === downProbabilityWeight) {
-                if (ema9 >= ema21) upProbabilityWeight += 1.0; else downProbabilityWeight += 1.0;
-                alphaScoreDelta = Math.abs(upProbabilityWeight - downProbabilityWeight);
-                calibratedProbability = 56.5;
-            }
-            prediction = (upProbabilityWeight > downProbabilityWeight) ? "UP" : "DOWN";
-            brainOutputStrings.push(`Conclusion: The data clearly points to a high probability of going ${prediction}.`);
-        }
-        
-        // --- LAYER 1: MARKET REGIME CLASSIFIER (PLAIN ENGLISH) ---
-        let marketRegime = "MEAN_REVERSION"; 
-        
-        // Quantifying trend strength
-        const slowEMA50 = calculateEMA(closes, 50).pop();
-        const slowEMA100 = calculateEMA(closes, 100).pop();
-        const trendStrength = Math.abs(slowEMA50 - slowEMA100) / slowEMA100 * 100;
-
-        let brainOutputStrings = [];
-
-        if (bbWidth > 0.0035 && trendStrength > 0.15) {
-            marketRegime = "STRUCTURAL_TREND";
-            brainOutputStrings.push("The market is currently in a strong, clear trend.");
-        } else if (atrPercent < 0.045 || bbWidth < 0.0014) {
-            marketRegime = "LOW_VOL_CHOP";
-            brainOutputStrings.push("The market is flat, boring, and barely moving right now.");
-        } else {
-            brainOutputStrings.push("The market is moving sideways, trapped between a ceiling and a floor.");
-        }
-
-        // --- LAYER 2: MULTI-FACTOR SYSTEM (PLAIN ENGLISH) ---
-        let upProbabilityWeight = 0, downProbabilityWeight = 0;
-
-        if (marketRegime === "LOW_VOL_CHOP") {
-            if (currentClose < sma) {
-                upProbabilityWeight += 3.5;
-                brainOutputStrings.push("Price dropped a bit too far below the average, expecting a bounce back up.");
-                if (rsi < 38) { upProbabilityWeight += 2.0; brainOutputStrings.push(`RSI confirms it is oversold and due for relief.`); }
-            } else {
-                downProbabilityWeight += 3.5;
-                brainOutputStrings.push("Price pumped a bit too high above average, expecting a gravity drop back down.");
-                if (rsi > 62) { downProbabilityWeight += 2.0; brainOutputStrings.push(`RSI confirms it is overbought and running out of steam.`); }
-            }
-        } else if (marketRegime === "STRUCTURAL_TREND") {
-            if (ema9 > ema21) {
-                upProbabilityWeight += 4.0;
-                brainOutputStrings.push("Short-term moving averages are leading the way UP.");
-            } else {
-                downProbabilityWeight += 4.0;
-                brainOutputStrings.push("Short-term moving averages are leading the way DOWN.");
-            }
-
-            if (currentHist > prevHist && currentHist > 0) {
-                upProbabilityWeight += 3.0;
-                brainOutputStrings.push("MACD shows buyers are actively gaining strength.");
-            } else if (currentHist < prevHist && currentHist < 0) {
-                downProbabilityWeight += 3.0;
-                brainOutputStrings.push("MACD shows sellers are actively taking control.");
-            }
-        } else {
-            if (ema9 > ema21) upProbabilityWeight += 2.0; else downProbabilityWeight += 2.0;
-            if (currentHist > prevHist) upProbabilityWeight += 1.5; else downProbabilityWeight += 1.5;
-            
-            if (orderFlowImbalance > 0.25) {
-                upProbabilityWeight += 3.0;
-                brainOutputStrings.push(`Order book shows heavy buying pressure and demand.`);
-            } else if (orderFlowImbalance < -0.25) {
-                downProbabilityWeight += 3.0;
-                brainOutputStrings.push(`Order book shows a massive brick wall of sellers absorbing everything.`);
-            }
-        }
-
-        // --- LAYER 3: WICK & EXTREME PROTECTION (PLAIN ENGLISH) ---
-        const prevOpen = opens[opens.length - 2], prevClose = closes[closes.length - 2];
-        const prevHigh = highs[highs.length - 2], prevLow = lows[lows.length - 2];
-        const upperWick = prevHigh - Math.max(prevOpen, prevClose);
-        const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
-        const candleBody = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
-
-        if (upperWick > candleBody * 2.2) {
-            downProbabilityWeight += 4.0;
-            brainOutputStrings.push("Buyers just tried to pump the price, but got rejected instantly by a wall of sellers.");
-        }
-        if (lowerWick > candleBody * 2.2) {
-            upProbabilityWeight += 4.0;
-            brainOutputStrings.push("Sellers tried to dump it, but massive dip-buying demand swallowed it right up.");
-        }
-
-        if (currentClose > upperBB && rsi > 74) {
-            downProbabilityWeight += 6.0; upProbabilityWeight = 0; 
-            brainOutputStrings.push(`CRITICAL: Price pumped way too high, way too fast. Very likely to crash back down.`);
-        }
-        if (currentClose < lowerBB && rsi < 26) {
-            upProbabilityWeight += 6.0; downProbabilityWeight = 0; 
-            brainOutputStrings.push(`CRITICAL: Price dumped way too low, way too fast. Preparing for a strong recovery bounce.`);
-        }
-
-        // --- LAYER 4: INFERENCE ENGINE (PLAIN ENGLISH) ---
-        let alphaScoreDelta = Math.abs(upProbabilityWeight - downProbabilityWeight);
-        if (isNaN(alphaScoreDelta)) alphaScoreDelta = 0;
-        
-        let prediction = "SKIP";
-        let totalEnsembleWeight = upProbabilityWeight + downProbabilityWeight || 1;
-        let calibratedProbability = 50 + (alphaScoreDelta * 4.5);
-        if (calibratedProbability > 99.1) calibratedProbability = 99.1;
-
-        if ((atrPercent < 0.038 || bbWidth < 0.0011) && alphaScoreDelta <= 2.5) {
-            prediction = "SKIP";
-            brainOutputStrings.push("Conclusion: The market is completely dead right now. Skipping this round to protect capital.");
-        } else {
-            if (upProbabilityWeight === downProbabilityWeight) {
+                // Stochastic fallback alignment layer
                 if (ema9 >= ema21) upProbabilityWeight += 1.0; else downProbabilityWeight += 1.0;
                 alphaScoreDelta = Math.abs(upProbabilityWeight - downProbabilityWeight);
                 calibratedProbability = 56.5;
