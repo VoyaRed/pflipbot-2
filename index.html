@@ -737,8 +737,11 @@
             
             let dirClass = safePredicted === "UP" ? "dir-up" : (safePredicted === "DOWN" ? "dir-down" : "");
             
-            ledger.innerHTML += `
-            <div class="ledger-item">
+            // 1. Check if a ledger row for this epoch already exists
+let existingLedgerItem = document.getElementById(`ledger-epoch-${epoch}`);
+
+            // 2. Build the inner HTML for the row
+            let ledgerContent = `
                 <div style="flex: 1;">
                     <strong>Epoch #${epoch}</strong> 
                     <span class="confidence-tag" style="margin-left: 10px; font-size: 0.75rem;">${safeConf}</span>
@@ -748,7 +751,21 @@
                     &nbsp;—&nbsp; 
                     <span class="${resClass}" style="text-transform: uppercase;">${safeResult}</span>
                 </div>
-            </div>`;
+            `;
+            
+            if (existingLedgerItem) {
+                // 3a. If the row already exists, just update its contents with the latest prediction
+                existingLedgerItem.innerHTML = ledgerContent;
+            } else {
+                // 3b. If it doesn't exist yet, create a new row
+                let newItem = document.createElement('div');
+                newItem.className = 'ledger-item';
+                newItem.id = `ledger-epoch-${epoch}`; // Assign the unique ID here
+                newItem.innerHTML = ledgerContent;
+                
+                // Append the new item to the ledger
+                ledger.appendChild(newItem); 
+            }
         }
 
         function triggerWinEffect() {
