@@ -7,17 +7,19 @@ const fetch = require('node-fetch');
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
 const ABI = [
     "function currentEpoch() view returns (uint256)", 
     "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
 ];
+
 // --- STATE VARIABLES ---
 let provider, contract;
 let lastEpochChecked = 0;
 let memoryStore = {};
 let lastScrapeTime = 0;
-const SCRAPE_INTERVAL = 22000; // Only scrape every 22 seconds
+const SCRAPE_INTERVAL = 22000; 
 
 async function findFastestRPC() {
     const nodes = [
@@ -25,6 +27,7 @@ async function findFastestRPC() {
         "https://binance.llamarpc.com",
         "https://bsc-dataseed.binance.org"
     ];
+
     for (let url of nodes) {
         try {
             const p = new ethers.providers.JsonRpcProvider(url);
@@ -63,13 +66,22 @@ async function runLoop() {
 
 async function checkRound() {
     const currentEpoch = (await contract.currentEpoch()).toNumber();
+
+    // --- MEMORY LEAK FIX: Garbage Collection for old epochs ---
+    const staleEpoch = currentEpoch - 10;
+    Object.keys(memoryStore).forEach(key => {
+        if (key.includes(`_${staleEpoch}`)) {
+            delete memoryStore[key];
+        }
+    });
+
     // --- 1. SCAN THE CURRENT ROUND ---
     const nextRoundData = await contract.rounds(currentEpoch);
     const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
+
     // 0. RESET AT START OF NEW ROUND
-    // This ensures the database is wiped clean for the first 3 minutes
     if (secondsLeft > 102) {
         if (!memoryStore[`cleared_${currentEpoch}`]) {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
@@ -85,7 +97,7 @@ async function checkRound() {
         }
     }
 
-    // 1. SCAN (Cache-aware & Stops after lock-in)
+    // 1. SCAN 
     if (secondsLeft > 0 && secondsLeft <= 102 && !memoryStore[`locked_${currentEpoch}`]) {
         if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
             console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
@@ -94,7 +106,7 @@ async function checkRound() {
         }
     }
 
-     // 2. LOCK-IN at 30 seconds
+    // 2. LOCK-IN at 30 seconds
     if (secondsLeft <= 30 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
         console.log(`⏱️30s Threshold hit! Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
@@ -102,11 +114,13 @@ async function checkRound() {
 
     // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
     if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
+    
     try {
         const { data: pendingLogs } = await supabaseClient
             .from('prediction_logs')
             .select('epoch_id')
             .eq('result', 'PENDING');
+            
         if (pendingLogs && pendingLogs.length > 0) {
             for (let log of pendingLogs) {
                 if (log.epoch_id <= currentEpoch - 2) {
@@ -119,7 +133,6 @@ async function checkRound() {
     }
 }
 
-// Added thoughtProcess to the function parameters
 async function updateMarketStats(rsi, macd, price, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%", thoughtProcess = "") {
     const { error } = await supabaseClient
         .from('market_stats')
@@ -147,14 +160,16 @@ async function generatePrediction(targetEpoch) {
             return; 
         }
         
-        const targetUrl = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
+        // FIX: Increased limit to 1000 for indicator warmup, added Date cache-buster for ScrapingBee
+        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1000&t=${Date.now()}`;
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}`;
         const options = {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Accept': 'application/json'
             }
         };
+
         let candles = null;
         for (let i = 0; i < 3; i++) {
             try {
@@ -181,7 +196,7 @@ async function generatePrediction(targetEpoch) {
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
-        
+
         // RSI 
         let gains = 0, losses = 0;
         for(let i = 1; i <= 14; i++) {
@@ -211,7 +226,7 @@ async function generatePrediction(targetEpoch) {
         const stdDev = Math.sqrt(variance);
         const upperBB = sma + (stdDev * 2);
         const lowerBB = sma - (stdDev * 2);
-        
+
         // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
@@ -221,24 +236,26 @@ async function generatePrediction(targetEpoch) {
             }
             return emaArray;
         };
-        
+
         // EMA & MACD
         const ema9 = calculateEMAArray(closes, 9)[closes.length - 1];
         const ema21 = calculateEMAArray(closes, 21)[closes.length - 1];
         const ema12Array = calculateEMAArray(closes, 12);
         const ema26Array = calculateEMAArray(closes, 26);
+        
         const macdLineArray = ema12Array.map((v, i) => v - ema26Array[i]);
         const signalLineArray = calculateEMAArray(macdLineArray, 9);
         const currentMACD = macdLineArray[macdLineArray.length - 1];
+        
         const currentSignal = signalLineArray[signalLineArray.length - 1];
         const currentHist = currentMACD - currentSignal;
         const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
-        
+
         // Volume
         const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
         const currentVol = volumes[volumes.length - 1];
         const hasVolumeSpike = currentVol > (volSMA20 * 1.5);
-        
+
         // Historical
         let recentUps = 0, recentDowns = 0;
         const roundPromises = [];
@@ -246,6 +263,7 @@ async function generatePrediction(targetEpoch) {
             roundPromises.push(contract.rounds(targetEpoch - i).catch(() => null));
         }
         const pastRounds = await Promise.all(roundPromises);
+        
         pastRounds.forEach(r => {
             if (r && r.oracleCalled) {
                 const lp = parseFloat(ethers.utils.formatUnits(r.lockPrice, 8));
@@ -254,7 +272,7 @@ async function generatePrediction(targetEpoch) {
                 else if (cp < lp) recentDowns++;
             }
         });
-        
+
         // --- BRAIN LOGIC & TEXT GENERATOR ---
         let upScore = 0, downScore = 0;
         let brainText = []; 
@@ -270,10 +288,10 @@ async function generatePrediction(targetEpoch) {
         const prevClose = closes[closes.length - 2];
         const prevHigh = highs[highs.length - 2];
         const prevLow = lows[lows.length - 2];
+        
         const upperWick = prevHigh - Math.max(prevOpen, prevClose);
         const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
         const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
-
         const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
         
         let trSum = 0;
@@ -284,6 +302,7 @@ async function generatePrediction(targetEpoch) {
             trSum += Math.max(highLow, highClose, lowClose);
         }
         const atrPercentage = ((trSum / 14) / currentClose) * 100;
+        
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
 
@@ -300,7 +319,6 @@ async function generatePrediction(targetEpoch) {
             }
         } else {
             brainText.push("Market is showing structural momentum, engaging Trend analysis.");
-            
             if (ema9 > ema21) { upScore += 2.0; brainText.push("Fast EMA(9) leads Slow EMA(21) (Bullish indicator)."); }
             if (ema9 < ema21) { downScore += 2.0; brainText.push("Fast EMA(9) trails Slow EMA(21) (Bearish indicator)."); }
             
@@ -335,12 +353,11 @@ async function generatePrediction(targetEpoch) {
             brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
         }
         
-        // Compile the final thought string
         const finalThoughtProcess = brainText.join(" ");
-
         let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         let displayConf = finalConfidence;
+        
         if (prediction === "SKIP") {
             let tryPred = (ema9 >= ema21) ? "UP" : "DOWN"; 
             displayConf = `SKIP (Try: ${tryPred} ${finalConfidence})`;
@@ -350,9 +367,9 @@ async function generatePrediction(targetEpoch) {
         if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
         let laterDownProb = 100 - laterUpProb;
+        
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
-
         console.log(`🔥 Live Scan Update! Conf: ${displayConf}`);
         
         memoryStore[`best_${targetEpoch}`] = {
@@ -367,7 +384,6 @@ async function generatePrediction(targetEpoch) {
             thoughtProcess: finalThoughtProcess
         };
         
-        // Pass the thought process string up to Supabase
         await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPrediction, laterMajorityProb, finalThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
@@ -377,6 +393,7 @@ async function generatePrediction(targetEpoch) {
 async function lockInPrediction(targetEpoch) {
     const bestData = memoryStore[`best_${targetEpoch}`];
     if (!bestData || bestData.numeric === -1) return;
+    
     memoryStore[`locked_${targetEpoch}`] = true;
     console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.pred} (${bestData.conf})`);
     
@@ -391,7 +408,7 @@ async function lockInPrediction(targetEpoch) {
             })
         }).catch(err => console.error("Failed to send webhook:", err));
     }
-    // Ensure you are using upsert to overwrite the interim predictions
+    
     const { error } = await supabaseClient.from('prediction_logs').upsert([{ 
         epoch_id: targetEpoch, 
         predicted_side: bestData.pred, 
@@ -401,12 +418,10 @@ async function lockInPrediction(targetEpoch) {
     }], { 
         onConflict: 'epoch_id' 
     });
+    
     if (error) console.error("❌ Early Supabase insert error:", error);
-
-    // Keep the final thought locked onto the screen until the next epoch starts evaluating
     await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, "NONE", "Calculating...", bestData.laterPrediction, bestData.laterMajorityProb, bestData.thoughtProcess);
 }
-
 
 async function verifyResult(epochToCheck) {
     try {
@@ -415,18 +430,28 @@ async function verifyResult(epochToCheck) {
 
         const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
         const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
-        const actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
+        
+        // FIX: Handled the PancakeSwap 'Tie' Refund event
+        let actualResult;
+        if (closePrice === lockPrice) {
+            actualResult = "TIE";
+        } else {
+            actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
+        }
         
         const { data, error: fetchError } = await supabaseClient
             .from('prediction_logs')
             .select('*')
             .eq('epoch_id', epochToCheck)
             .single();
+            
         if (fetchError || !data) return;
-
         if (data.result !== 'PENDING') return;
+        
         let resultStatus;
-        if (data.predicted_side === "SKIP") {
+        if (actualResult === "TIE") {
+            resultStatus = "TIE";
+        } else if (data.predicted_side === "SKIP") {
             resultStatus = "SKIP/" + actualResult;
         } else {
             resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
@@ -437,6 +462,7 @@ async function verifyResult(epochToCheck) {
             .from('prediction_logs')
             .update({ result: resultStatus })
             .eq('epoch_id', epochToCheck);
+            
         if (updateError) {
             console.error(`❌ Supabase Update Error for Epoch ${epochToCheck}:`, updateError.message);
             return;
@@ -448,7 +474,7 @@ async function verifyResult(epochToCheck) {
             .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
             .order('epoch_id', { ascending: false })
             .limit(15);
-
+            
         if (recentLogs && recentLogs.length > 0) {
             const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const mixedRate = ((mixedWins / recentLogs.length) * 100).toFixed(1);
@@ -467,6 +493,8 @@ async function verifyResult(epochToCheck) {
         console.error("Result Verification Failed:", e); 
     }
 }
+
+// Start bot and HTTP listener
 startBot();
 const http = require('http');
 http.createServer((req, res) => { res.writeHead(200); res.end('Bot running'); }).listen(process.env.PORT || 3000);
