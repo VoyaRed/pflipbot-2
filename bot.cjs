@@ -77,7 +77,7 @@ async function checkRound() {
                 .update({ 
                     current_pred: 'NONE', 
                     current_conf: 'Calculating...',
-                    thought_process: '[Regime Classifier Active] Synchronizing multi-factor tensors. Observing initial order book stabilization patterns...'
+                    thought_process: 'Aye lemme think and get back to u rq the market craaazy rn icl'
                 })
                 .eq('id', 1);
             memoryStore[`cleared_${currentEpoch}`] = true;
