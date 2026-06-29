@@ -253,7 +253,7 @@ async function generatePrediction(targetEpoch) {
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
 
-        // --- IMPROVED RSI: Wilder's Smoothing (RMA) ---
+       // --- IMPROVED RSI Array: Wilder's Smoothing (RMA) ---
         let gains = [], losses = [];
         for (let i = 1; i < closes.length; i++) {
             let diff = closes[i] - closes[i - 1];
@@ -261,33 +261,40 @@ async function generatePrediction(targetEpoch) {
             losses.push(diff < 0 ? Math.abs(diff) : 0);
         }
         
-        // Calculate initial SMA for the first 14 periods
+        // Compute the full historical RSI array
+        let rsiHistory = [];
         let avgGain = gains.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         let avgLoss = losses.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         
-        // Apply Wilder's Smoothing (RMA) for the remainder
-        // The smoothing factor for RMA is 1/period
+        // First RSI value (at index 14)
+        rsiHistory.push(avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss))));
+
+        // Calculate RMA for the remaining candles
         for (let i = 14; i < gains.length; i++) {
             avgGain = ((avgGain * 13) + gains[i]) / 14;
             avgLoss = ((avgLoss * 13) + losses[i]) / 14;
-        }
-        
-        let rsi = 100;
-        if (avgLoss !== 0) {
-            let rs = avgGain / avgLoss;
-            rsi = 100 - (100 / (1 + rs));
-        } else if (avgGain === 0) {
-            rsi = 0; // If no gain, RSI is 0
-        } else {
-            rsi = 100; // If no loss, RSI is 100
+            
+            let currentRsi = 100;
+            if (avgLoss !== 0) {
+                currentRsi = 100 - (100 / (1 + (avgGain / avgLoss)));
+            } else if (avgGain === 0) {
+                currentRsi = 0;
+            }
+            rsiHistory.push(currentRsi);
         }
 
-        // NEW: Measure RSI Slope (3-period change)
-        const rsiArray = []; // You would need to store historical RSI values here
-        // For simplicity, let's look at the delta of the last 3 candles
-        let rsiSlope = (rsi - previousRSI_3_candles_ago) / 3; 
-        
+        // Get current RSI (the latest one)
+        let rsi = rsiHistory[rsiHistory.length - 1];
+
+        // NEW: Measure RSI Slope (3-period change) securely using the historical array
+        let previousRSI_3_candles_ago = rsiHistory[rsiHistory.length - 4] || rsi;
+        let rsiSlope = (rsi - previousRSI_3_candles_ago) / 3;
+
         // NEW: Acceleration (Is the trend speed increasing?)
+        let previousRSI_1_candle_ago = rsiHistory[rsiHistory.length - 2] || rsi;
+        let previousRSI_4_candles_ago = rsiHistory[rsiHistory.length - 5] || previousRSI_3_candles_ago;
+        let previousRSISlope = (previousRSI_1_candle_ago - previousRSI_4_candles_ago) / 3;
+        
         let rsiAcceleration = rsiSlope - previousRSISlope;
 
         // BB
