@@ -81,21 +81,31 @@ async function checkRound() {
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
 
-    // 0. RESET AT START OF NEW ROUND
+        // 0. RESET AT START OF NEW ROUND
     if (secondsLeft > 102) {
         if (!memoryStore[`cleared_${currentEpoch}`]) {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
+            
+            // Grab the previous round's thoughts from memory
+            let lastAnalysis = "";
+            const lastData = memoryStore[`best_${currentEpoch - 1}`];
+            if (lastData && lastData.thoughtProcess) {
+                lastAnalysis = `\n\n--- LAST MARKET ANALYSIS ---\n${lastData.thoughtProcess}`;
+            }
+
             await supabaseClient
                 .from('market_stats')
                 .update({ 
                     current_pred: 'NONE', 
                     current_conf: 'Calculating...',
-                    thought_process: `Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...`
+                    thought_process: `Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...${lastAnalysis}`
                 })
                 .eq('id', 1);
+                
             memoryStore[`cleared_${currentEpoch}`] = true;
         }
     }
+
 
     // 1. SCAN 
     if (secondsLeft > 0 && secondsLeft <= 102 && !memoryStore[`locked_${currentEpoch}`]) {
