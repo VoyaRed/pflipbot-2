@@ -249,26 +249,35 @@ async function generatePrediction(targetEpoch) {
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
 
-        // RSI 
-        let gains = 0, losses = 0;
-        for(let i = 1; i <= 14; i++) {
-            const diff = closes[i] - closes[i-1];
-            if (diff > 0) gains += diff; 
-            else losses += Math.abs(diff);
-        }
-        let avgGain = gains / 14; 
-        let avgLoss = losses / 14;
-        for(let i = 15; i < closes.length; i++) {
-            const diff = closes[i] - closes[i-1];
-            const currentGain = diff > 0 ? diff : 0;
-            const currentLoss = diff < 0 ? Math.abs(diff) : 0;
-            avgGain = ((avgGain * 13) + currentGain) / 14;
-            avgLoss = ((avgLoss * 13) + currentLoss) / 14;
-        }
+// --- IMPROVED RSI: Wilder's Smoothing (RMA) ---
+let gains = [], losses = [];
+for (let i = 1; i < closes.length; i++) {
+    let diff = closes[i] - closes[i - 1];
+    gains.push(diff > 0 ? diff : 0);
+    losses.push(diff < 0 ? Math.abs(diff) : 0);
+}
 
-        let rsi = 100;
-        if (avgLoss !== 0) rsi = 100 - (100 / (1 + (avgGain / avgLoss)));
-        else if (avgGain === 0) rsi = 50;
+// Calculate initial SMA for the first 14 periods
+let avgGain = gains.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
+let avgLoss = losses.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
+
+// Apply Wilder's Smoothing (RMA) for the remainder
+// The smoothing factor for RMA is 1/period
+for (let i = 14; i < gains.length; i++) {
+    avgGain = ((avgGain * 13) + gains[i]) / 14;
+    avgLoss = ((avgLoss * 13) + losses[i]) / 14;
+}
+
+let rsi = 100;
+if (avgLoss !== 0) {
+    let rs = avgGain / avgLoss;
+    rsi = 100 - (100 / (1 + rs));
+} else if (avgGain === 0) {
+    rsi = 0; // If no gain, RSI is 0
+} else {
+    rsi = 100; // If no loss, RSI is 100
+}
+
 
         // BB
         const bbPeriod = 20;
