@@ -12,7 +12,6 @@ const ABI = [
     "function currentEpoch() view returns (uint256)", 
     "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
 ];
-
 // --- STATE VARIABLES ---
 let provider, contract;
 let lastEpochChecked = 0;
@@ -64,13 +63,11 @@ async function runLoop() {
 
 async function checkRound() {
     const currentEpoch = (await contract.currentEpoch()).toNumber();
-    
     // --- 1. SCAN THE CURRENT ROUND ---
     const nextRoundData = await contract.rounds(currentEpoch);
     const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
-
     // 0. RESET AT START OF NEW ROUND
     // This ensures the database is wiped clean for the first 3 minutes
     if (secondsLeft > 102) {
@@ -78,14 +75,17 @@ async function checkRound() {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
             await supabaseClient
                 .from('market_stats')
-                .update({ current_pred: 'NONE', current_conf: 'Calculating...' })
+                .update({ 
+                    current_pred: 'NONE', 
+                    current_conf: 'Calculating...',
+                    thought_process: 'Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...'
+                })
                 .eq('id', 1);
             memoryStore[`cleared_${currentEpoch}`] = true;
         }
     }
 
     // 1. SCAN (Cache-aware & Stops after lock-in)
-    // Notice the new "!memoryStore[`locked_${currentEpoch}`]" condition
     if (secondsLeft > 0 && secondsLeft <= 102 && !memoryStore[`locked_${currentEpoch}`]) {
         if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
             console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
@@ -101,15 +101,12 @@ async function checkRound() {
     }
 
     // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
-    // (Keep your existing verification code down here...)
-
     if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
     try {
         const { data: pendingLogs } = await supabaseClient
             .from('prediction_logs')
             .select('epoch_id')
             .eq('result', 'PENDING');
-
         if (pendingLogs && pendingLogs.length > 0) {
             for (let log of pendingLogs) {
                 if (log.epoch_id <= currentEpoch - 2) {
@@ -122,7 +119,8 @@ async function checkRound() {
     }
 }
 
-async function updateMarketStats(rsi, macd, price, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%") {
+// Added thoughtProcess to the function parameters
+async function updateMarketStats(rsi, macd, price, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%", thoughtProcess = "") {
     const { error } = await supabaseClient
         .from('market_stats')
         .upsert([{ 
@@ -134,6 +132,7 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
             current_conf: currentConf,
             later_pred: laterPred,
             later_conf: laterConf,
+            thought_process: thoughtProcess,
             updated_at: new Date().toISOString() 
         }]);
     if (error) console.error("Error updating stats:", error);
@@ -142,13 +141,11 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
-        
         const apiKey = process.env.SCRAPINGBEE_KEY;
         if (!apiKey) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
             return; 
         }
-
         
         const targetUrl = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}`;
@@ -158,7 +155,6 @@ async function generatePrediction(targetEpoch) {
                 'Accept': 'application/json'
             }
         };
-        
         let candles = null;
         for (let i = 0; i < 3; i++) {
             try {
@@ -185,12 +181,9 @@ async function generatePrediction(targetEpoch) {
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
-
         
-        // RSI (True Wilder's Smoothing to match TradingView)
+        // RSI 
         let gains = 0, losses = 0;
-        
-        // 1. Get the initial Simple average for the first 14 periods to seed the formula
         for(let i = 1; i <= 14; i++) {
             const diff = closes[i] - closes[i-1];
             if (diff > 0) gains += diff; 
@@ -198,13 +191,10 @@ async function generatePrediction(targetEpoch) {
         }
         let avgGain = gains / 14; 
         let avgLoss = losses / 14;
-
-        // 2. Smooth it out exponentially for the remaining candles (Wilder's Method)
         for(let i = 15; i < closes.length; i++) {
             const diff = closes[i] - closes[i-1];
             const currentGain = diff > 0 ? diff : 0;
             const currentLoss = diff < 0 ? Math.abs(diff) : 0;
-            
             avgGain = ((avgGain * 13) + currentGain) / 14;
             avgLoss = ((avgLoss * 13) + currentLoss) / 14;
         }
@@ -225,7 +215,7 @@ async function generatePrediction(targetEpoch) {
         // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data[0]]; // 🐛 FIX: Added [0] here!
+            let emaArray = [data[0]]; 
             for (let i = 1; i < data.length; i++) {
                 emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             }
@@ -249,7 +239,7 @@ async function generatePrediction(targetEpoch) {
         const currentVol = volumes[volumes.length - 1];
         const hasVolumeSpike = currentVol > (volSMA20 * 1.5);
         
-        // --- NEW: FETCH HISTORICAL EPOCH DATA FOR MICRO-TREND ---
+        // Historical
         let recentUps = 0, recentDowns = 0;
         const roundPromises = [];
         for(let i=1; i<=5; i++) {
@@ -264,32 +254,28 @@ async function generatePrediction(targetEpoch) {
                 else if (cp < lp) recentDowns++;
             }
         });
-
-        // Scoring Logic
+        
+        // --- BRAIN LOGIC & TEXT GENERATOR ---
         let upScore = 0, downScore = 0;
-
-        // Apply Historical Micro-trend weight
-        if (recentUps >= 3) upScore += 1;
-        if (recentUps === 5) upScore += 1.5; // Strong sustained trend
-        if (recentDowns >= 3) downScore += 1;
+        let brainText = []; 
+        
+        // Micro trend
+        if (recentUps >= 3) { upScore += 1; brainText.push("Recent historical rounds lean bullish."); }
+        if (recentUps === 5) upScore += 1.5;
+        if (recentDowns >= 3) { downScore += 1; brainText.push("Recent historical rounds lean bearish."); }
         if (recentDowns === 5) downScore += 1.5;
 
-        // --- 1. EXTENDED CANDLE DATA (Needed for Wicks) ---
-        
-        // --- 2. PRICE ACTION (Wick Analysis) ---
+        // Wicks
         const prevOpen = opens[opens.length - 2];
         const prevClose = closes[closes.length - 2];
         const prevHigh = highs[highs.length - 2];
         const prevLow = lows[lows.length - 2];
-        
         const upperWick = prevHigh - Math.max(prevOpen, prevClose);
         const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
         const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
 
-        // --- 3. MOMENTUM (Rate of Change) ---
         const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
-
-        // --- 4. VOLATILITY (Average True Range Proxy) ---
+        
         let trSum = 0;
         for (let i = closes.length - 14; i < closes.length; i++) {
             const highLow = highs[i] - lows[i];
@@ -298,86 +284,77 @@ async function generatePrediction(targetEpoch) {
             trSum += Math.max(highLow, highClose, lowClose);
         }
         const atrPercentage = ((trSum / 14) / currentClose) * 100;
-
-        // Existing Choppiness check
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
 
-        // --- 5. THE DECISION ENGINE ---
         if (atrPercentage < 0.05 || isChoppy) {
-            // CHOP MARKET LOGIC: Decisive Mean Reversion
+            brainText.push("Volatility is extremely low, switching to a Choppy/Mean-Reversion strategy.");
             if (currentClose < sma) {
                 upScore += 2.5;
-                if (rsi < 40) upScore += 1.5; 
+                brainText.push("Price is lingering below the Moving Average, expecting a corrective bounce upward.");
+                if (rsi < 40) { upScore += 1.5; brainText.push(`RSI is low at ${rsi.toFixed(1)}, confirming oversold safety.`); }
             } else if (currentClose > sma) {
                 downScore += 2.5;
-                if (rsi > 60) downScore += 1.5; 
+                brainText.push("Price is floating above the Moving Average, expecting a gravity pull downward.");
+                if (rsi > 60) { downScore += 1.5; brainText.push(`RSI is elevated at ${rsi.toFixed(1)}, confirming overbought resistance.`); }
             }
         } else {
-            // TRENDING MARKET LOGIC
-            // Trend Alignment (MACD & EMA)
-            if (ema9 > ema21) upScore += 2.0;
-            if (ema9 < ema21) downScore += 2.0;
-            if (currentMACD > currentSignal && currentHist > prevHist) upScore += 2.5;
-            if (currentMACD < currentSignal && currentHist < prevHist) downScore += 2.5;
-
-            // Momentum (ROC Velocity)
+            brainText.push("Market is showing structural momentum, engaging Trend analysis.");
+            
+            if (ema9 > ema21) { upScore += 2.0; brainText.push("Fast EMA(9) leads Slow EMA(21) (Bullish indicator)."); }
+            if (ema9 < ema21) { downScore += 2.0; brainText.push("Fast EMA(9) trails Slow EMA(21) (Bearish indicator)."); }
+            
+            if (currentMACD > currentSignal && currentHist > prevHist) { upScore += 2.5; brainText.push("MACD histogram is expanding upward, showing buyer strength."); }
+            if (currentMACD < currentSignal && currentHist < prevHist) { downScore += 2.5; brainText.push("MACD histogram is expanding downward, showing seller control."); }
+            
             if (roc3 > 0.15) upScore += 3.0;
             if (roc3 < -0.15) downScore += 3.0; 
 
-            // Price Action Reversals (Wicks)
-            if (upperWick > bodySize * 2) downScore += 3.5;
-            if (lowerWick > bodySize * 2) upScore += 3.5;
+            if (upperWick > bodySize * 2) { downScore += 3.5; brainText.push("Spotted a long upper wick on the previous candle, warning of heavy overhead supply."); }
+            if (lowerWick > bodySize * 2) { upScore += 3.5; brainText.push("Spotted a long lower wick on the previous candle, showing strong dip-buying demand."); }
 
-            // Snap-Back Reversals (Extreme RSI + BB)
-            if (currentClose > upperBB && rsi > 72) downScore += 4.5;
-            if (currentClose < lowerBB && rsi < 28) upScore += 4.5;
+            if (currentClose > upperBB && rsi > 72) { downScore += 4.5; brainText.push("Price pierced the Upper Bollinger Band with extreme RSI. Danger of an immediate snap-back down."); }
+            if (currentClose < lowerBB && rsi < 28) { upScore += 4.5; brainText.push("Price pierced the Lower Bollinger Band with crushed RSI. High probability of a snap-back up."); }
         }
 
         let netScore = Math.abs(upScore - downScore);
-        if (isNaN(netScore)) netScore = 0; // 🛡️ Prevents NaN confidence injection
+        if (isNaN(netScore)) netScore = 0;
+        
         let prediction;
-        // --- SUPER CHOPPY SKIP LOGIC ---
-        // Only skip if volatility is extremely low AND neither side has a strong lead
         if ((atrPercentage < 0.04 || bbWidth < 0.0012) && netScore <= 2.0) {
             prediction = "SKIP";
+            brainText.push("Conclusion: Signals are heavily mixed and price action is practically frozen. Initiating a SKIP to preserve capital.");
         } else {
-            // --- TIE-BREAKER ---
-            // If it's not a skip, we MUST break any ties to ensure a bet is placed
             if (upScore === downScore) {
-                if (ema9 >= ema21) {
-                    upScore += 1.5; 
-                } else {
-                    downScore += 1.5; 
-                }
-                netScore = Math.abs(upScore - downScore); // Recalculate net score
+                brainText.push("Data is tied. Using EMA trend alignment as the final tie-breaker.");
+                if (ema9 >= ema21) { upScore += 1.5; } 
+                else { downScore += 1.5; }
+                netScore = Math.abs(upScore - downScore);
             }
             prediction = (upScore > downScore) ? "UP" : "DOWN";
+            brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
         }
         
-        // --- TRUE CONVICTION SCALING ---
+        // Compile the final thought string
+        const finalThoughtProcess = brainText.join(" ");
+
         let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         let displayConf = finalConfidence;
-
         if (prediction === "SKIP") {
             let tryPred = (ema9 >= ema21) ? "UP" : "DOWN"; 
             displayConf = `SKIP (Try: ${tryPred} ${finalConfidence})`;
         }
 
-        // Calculate "Later" Likelihood
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
-        if (isNaN(laterUpProb)) laterUpProb = 50; // 🛡️ Prevents NaN later confidence
-        
+        if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
         let laterDownProb = 100 - laterUpProb;
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
 
-        // --- NEW: THE MEMORY VAULT (OVERWRITE MODE) ---
         console.log(`🔥 Live Scan Update! Conf: ${displayConf}`);
         
-        // Always overwrite with the newest scan!
         memoryStore[`best_${targetEpoch}`] = {
             pred: prediction,
             conf: displayConf,
@@ -386,12 +363,12 @@ async function generatePrediction(targetEpoch) {
             laterMajorityProb: laterMajorityProb,
             rsi: rsi,
             currentMACD: currentMACD,
-            currentClose: currentClose
+            currentClose: currentClose,
+            thoughtProcess: finalThoughtProcess
         };
-
-        // Push the live scan straight to the UI!
-        await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPrediction, laterMajorityProb);
-
+        
+        // Pass the thought process string up to Supabase
+        await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPrediction, laterMajorityProb, finalThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
@@ -400,13 +377,9 @@ async function generatePrediction(targetEpoch) {
 async function lockInPrediction(targetEpoch) {
     const bestData = memoryStore[`best_${targetEpoch}`];
     if (!bestData || bestData.numeric === -1) return;
-
-    // Mark it as locked so we don't spam the database
     memoryStore[`locked_${targetEpoch}`] = true;
-
     console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.pred} (${bestData.conf})`);
-
-    // 1. Webhook Alert (Only fires if confidence is 75% or higher)
+    
     if (bestData.pred !== "SKIP" && bestData.numeric >= 75.0) {
         const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
         fetch(webhookUrl, {
@@ -419,21 +392,17 @@ async function lockInPrediction(targetEpoch) {
         }).catch(err => console.error("Failed to send webhook:", err));
     }
 
-    // 2. Insert into Supabase (This triggers your UI)
     const { error } = await supabaseClient.from('prediction_logs').insert([{ 
         epoch_id: targetEpoch, 
         predicted_side: bestData.pred, 
         result: 'PENDING',
         confidence: bestData.conf,
-        is_locked: true,        // Keeps your lock-in animation logic
+        is_locked: true,        
     }]);
-    
-    if (error) {
-        console.error("❌ Early Supabase insert error:", error);
-    }
+    if (error) console.error("❌ Early Supabase insert error:", error);
 
-    // 3. Update visual stats including the new LATER values, and reset the LIVE prediction
-    await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, "NONE", "Calculating...", bestData.laterPrediction, bestData.laterMajorityProb);
+    // Keep the final thought locked onto the screen until the next epoch starts evaluating
+    await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, "NONE", "Calculating...", bestData.laterPrediction, bestData.laterMajorityProb, bestData.thoughtProcess);
 }
 
 
@@ -446,18 +415,14 @@ async function verifyResult(epochToCheck) {
         const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
         const actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
         
-        // Added error tracking to the fetch
         const { data, error: fetchError } = await supabaseClient
             .from('prediction_logs')
             .select('*')
             .eq('epoch_id', epochToCheck)
             .single();
-            
         if (fetchError || !data) return;
 
-        // Skip if this record somehow already got resolved
         if (data.result !== 'PENDING') return;
-
         let resultStatus;
         if (data.predicted_side === "SKIP") {
             resultStatus = "SKIP/" + actualResult;
@@ -466,19 +431,15 @@ async function verifyResult(epochToCheck) {
         }
 
         console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
-        
-        // CRITICAL FIX: Removed 'close_price' so Supabase doesn't reject the update
         const { error: updateError } = await supabaseClient
             .from('prediction_logs')
             .update({ result: resultStatus })
             .eq('epoch_id', epochToCheck);
-
         if (updateError) {
             console.error(`❌ Supabase Update Error for Epoch ${epochToCheck}:`, updateError.message);
             return;
         }
 
-        // Improved: Added .limit(15) directly to the database query for efficiency
         const { data: recentLogs } = await supabaseClient
             .from('prediction_logs')
             .select('result, confidence')
@@ -486,29 +447,24 @@ async function verifyResult(epochToCheck) {
             .order('epoch_id', { ascending: false })
             .limit(15);
 
-                if (recentLogs && recentLogs.length > 0) {
-            // 1. MIXED MARKET: The Average of EVERYTHING (Total performance)
+        if (recentLogs && recentLogs.length > 0) {
             const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const mixedRate = ((mixedWins / recentLogs.length) * 100).toFixed(1);
 
-            // 2. TREND MARKET: High Conviction Only (Confidence > 55%)
             const trendLogs = recentLogs.filter(l => {
                 const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
                 return match ? parseFloat(match[1]) >= 55.0 : false;
             });
-            
             const trendWins = trendLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const trendRate = trendLogs.length > 0 ? ((trendWins / trendLogs.length) * 100).toFixed(1) : "0.0";
 
             console.log(`📈 Mixed Market (Overall Average): ${mixedRate}%`);
             console.log(`🚀 Trend Market (Conviction > 55%): ${trendRate}%`);
-                 }
-
+        }
     } catch(e) { 
         console.error("Result Verification Failed:", e); 
     }
 }
 startBot();
-
 const http = require('http');
 http.createServer((req, res) => { res.writeHead(200); res.end('Bot running'); }).listen(process.env.PORT || 3000);
