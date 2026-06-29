@@ -159,21 +159,31 @@ async function generatePrediction(targetEpoch) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
             return; 
         }
+        const PROXY_URL = process.env.PROXY_URL;
         
         // Target Binance API
         const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1000`;
         
         // ScrapingBee configuration - Using 'render_js=false' to make it faster
         // Using 'premium_proxy=true' is often required for Binance/Geo-restricted sites
-        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false&premium_proxy=true`;
+ //       const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false&premium_proxy=true`;
         
+//        const options = {
+//            method: 'GET',
+//            headers: {
+//                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+//                'Accept': 'application/json'
+//            },
+//            timeout: 10000 // Increased timeout for proxy latency
+//        };
+
         const options = {
-            method: 'GET',
+            agent: new HttpsProxyAgent(PROXY_URL),
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Accept': 'application/json'
             },
-            timeout: 10000 // Increased timeout for proxy latency
+            timeout: 5000 
         };
 
         let candles = null;
