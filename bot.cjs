@@ -392,15 +392,16 @@ async function lockInPrediction(targetEpoch) {
         }).catch(err => console.error("Failed to send webhook:", err));
     }
     // Ensure you are using upsert to overwrite the interim predictions
-    const { error } = await supabaseClient.from('prediction_logs').upsert([{ 
-        epoch_id: targetEpoch, 
-        predicted_side: bestData.pred, 
-        result: 'PENDING',
-        confidence: bestData.conf,
-        is_locked: true,        
-    }], { 
-        onConflict: 'epoch_id' 
-    });
+    const { data, error } = await supabaseClient
+        .from('prediction_logs')
+        .upsert({ 
+            epoch_id: epoch,
+            prediction: safePredicted,
+            confidence: safeConf,
+            // ... your other fields
+        }, { 
+            onConflict: 'epoch_id' // This tells Supabase to overwrite if the epoch already exists
+        });
     if (error) console.error("❌ Early Supabase insert error:", error);
 
     // Keep the final thought locked onto the screen until the next epoch starts evaluating
