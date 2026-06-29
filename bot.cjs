@@ -148,6 +148,7 @@ async function generatePrediction(targetEpoch) {
             console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
             return; 
         }
+
         
         const targetUrl = "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=100";
         const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}`;
@@ -358,8 +359,7 @@ async function generatePrediction(targetEpoch) {
         let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         let displayConf = finalConfidence;
-        
-        // Format the UI display if it does decide to skip
+
         if (prediction === "SKIP") {
             let tryPred = (ema9 >= ema21) ? "UP" : "DOWN"; 
             displayConf = `SKIP (Try: ${tryPred} ${finalConfidence})`;
@@ -368,7 +368,8 @@ async function generatePrediction(targetEpoch) {
         // Calculate "Later" Likelihood
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
         if (isNaN(laterUpProb)) laterUpProb = 50; // 🛡️ Prevents NaN later confidence
-        laterUpProb = Math.max(10, Math.min(90, laterUpProb)); 
+        
+        laterUpProb = Math.max(10, Math.min(90, laterUpProb));
         let laterDownProb = 100 - laterUpProb;
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
