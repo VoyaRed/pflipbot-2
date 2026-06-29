@@ -196,7 +196,7 @@ async function generatePrediction(targetEpoch) {
         const PROXY_URL = process.env.PROXY_URL;
         
         // Target Binance API
-        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=1000`;
+        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=300`;
         
         // ScrapingBee configuration - Using 'render_js=false' to make it faster
         // Using 'premium_proxy=true' is often required for Binance/Geo-restricted sites
@@ -217,7 +217,7 @@ async function generatePrediction(targetEpoch) {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Accept': 'application/json'
             },
-            timeout: 5000 
+            timeout: 15000 
         };
 
         let candles = null;
