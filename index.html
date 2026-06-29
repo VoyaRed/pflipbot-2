@@ -428,13 +428,16 @@
             const { data, error } = await supabaseClient.from('market_stats').select('*').eq('id', 1).maybeSingle(); 
             if (data && !error) {
                 const rsiEl = document.getElementById('live-rsi');
-                if (rsiEl) rsiEl.innerText = data.rsi.toFixed(2);
+                if (rsiEl) rsiEl.innerText = data.rsi !== null ? data.rsi.toFixed(2) : "?";
 
                 const macdEl = document.getElementById('live-macd');
                 if (macdEl && data.macd !== null && data.macd !== undefined) {
                     let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)";
                     macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
-                }
+                else {
+                // 🍰 Displays a styled question mark when the bot is scanning/waiting
+                macdEl.innerHTML = `<span style="color: var(--text-muted, #888)">?</span>`;
+                }        
 
                 const thoughtEl = document.getElementById('bot-thoughts');
                 const timeEl = document.getElementById('thought-timestamp');
