@@ -593,8 +593,9 @@
         function getActualBetInfo(log) {
             if (!log || !log.predicted_side || log.predicted_side === "NONE") return { text: "---", class: "pred-waiting" };
             if (log.predicted_side === "SKIP") {
-                if (log.confidence && String(log.confidence).includes("Try: UP")) return { text: "SKIP/UP", class: "pred-skip-up" };
-                else if (log.confidence && String(log.confidence).includes("Try: DOWN")) return { text: "SKIP/DOWN", class: "pred-skip-down" };
+                // Changed the text to just "SKIP" but kept your custom classes so it still looks nice!
+                if (log.confidence && String(log.confidence).includes("Try: UP")) return { text: "SKIP", class: "pred-skip-up" };
+                else if (log.confidence && String(log.confidence).includes("Try: DOWN")) return { text: "SKIP", class: "pred-skip-down" };
                 return { text: "SKIP", class: "pred-waiting" };
             }
             return { text: log.predicted_side, class: `pred-${String(log.predicted_side).toLowerCase()}` };
