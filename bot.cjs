@@ -116,11 +116,29 @@ async function checkRound() {
         }
     }
 
-    // 2. LOCK-IN at 30 seconds
-    if (secondsLeft <= 30 && secondsLeft > 0 && memoryStore[`best_${currentEpoch}`] && !memoryStore[`locked_${currentEpoch}`]) {
-        console.log(`⏱️30s Threshold hit! Locking in Epoch #${currentEpoch}`);
-        await lockInPrediction(currentEpoch);
+    // 2. LOCK-IN at 33 seconds
+if (secondsLeft <= 33 && secondsLeft > 0 && !memoryStore[`locked_${currentEpoch}`]) {
+    
+    // Failsafe: If proxy failed and we have no best prediction, force a SKIP
+    if (!memoryStore[`best_${currentEpoch}`]) {
+        console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing SKIP.`);
+        memoryStore[`best_${currentEpoch}`] = {
+            pred: "SKIP",
+            conf: "Proxy Timeout",
+            numeric: 0,
+            laterPrediction: "NONE",
+            laterMajorityProb: "0%",
+            rsi: 50,
+            currentMACD: 0,
+            currentClose: 0,
+            thoughtProcess: "Emergency Skip: Data retrieval failed before lock."
+        };
     }
+    
+    console.log(`⏱️ Locking in Epoch #${currentEpoch}`);
+    await lockInPrediction(currentEpoch);
+}
+
 
     // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
     if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
