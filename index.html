@@ -765,7 +765,7 @@
                 const betEl = document.getElementById('prev-bet');
                 betEl.innerText = betInfo.text;
                 betEl.className = `prediction-badge ${betInfo.class}`;
-                document.getElementById('prev-conf').innerText = prevLog.confidence;
+                document.getElementById('prev-conf').innerText = prevLog.confidence || "--%";
                 
                 const resInfo = getActualResultInfo(prevLog);
                 const resEl = document.getElementById('prev-result');
@@ -779,7 +779,7 @@
                 const betEl = document.getElementById('live-bet');
                 betEl.innerText = betInfo.text;
                 betEl.className = `prediction-badge ${betInfo.class}`;
-                document.getElementById('live-conf').innerText = liveLog.confidence;
+                document.getElementById('live-conf').innerText = liveLog.confidence || "--%";
             } else {
                 const betEl = document.getElementById('live-bet');
                 betEl.innerText = "Waiting...";
@@ -794,7 +794,7 @@
                 const predEl = document.getElementById('bot-prediction');
                 predEl.innerText = `🔒 FINAL: ${betInfo.text}`; // Added FINAL prefix
                 predEl.className = `prediction-badge ${betInfo.class}`;
-                document.getElementById('next-conf').innerText = nextLog.confidence;
+                document.getElementById('next-conf').innerText = nextLog.confidence || "Calculating...";
             } else {
                 // ⏳ BEFORE 13 SECONDS: The bot is updating market_stats every 20s. These are estimates.
                 const predEl = document.getElementById('bot-prediction');
@@ -805,30 +805,35 @@
         }
         
         function renderLedgerRow(epoch, predicted, result, confidence) {
-    const ledger = document.getElementById('ledger');
-    
-    // Determine Result Status
-    let resClass = "status-skip";
-    if (result.includes("WIN")) resClass = "status-win";
-    else if (result.includes("LOSS")) resClass = "status-loss";
-    
-    // Determine Direction styling
-    let dirClass = predicted === "UP" ? "dir-up" : (predicted === "DOWN" ? "dir-down" : "");
-    
-    // Build the row (Clearer formatting)
-    ledger.innerHTML += `
-    <div class="ledger-item">
-        <div style="flex: 1;">
-            <strong>Epoch #${epoch}</strong> 
-            <span class="confidence-tag" style="margin-left: 10px; font-size: 0.75rem;">${confidence}</span>
-        </div>
-        <div style="flex: 1; text-align: right;">
-            <span class="${dirClass}">Bet: ${predicted}</span> 
-            &nbsp;—&nbsp; 
-            <span class="${resClass}" style="text-transform: uppercase;">${result}</span>
-        </div>
-    </div>`;
-}
+            const ledger = document.getElementById('ledger');
+            
+            // 🛡️ SAFETIES: Prevent UI crash if data is briefly missing or null
+            const safeResult = result || "PENDING";
+            const safePredicted = predicted || "---";
+            const safeConf = confidence || "--%";
+        
+            // Determine Result Status
+            let resClass = "status-skip";
+            if (safeResult.includes("WIN")) resClass = "status-win";
+            else if (safeResult.includes("LOSS")) resClass = "status-loss";
+            
+            // Determine Direction styling
+            let dirClass = safePredicted === "UP" ? "dir-up" : (safePredicted === "DOWN" ? "dir-down" : "");
+            
+            // Build the row cleanly
+            ledger.innerHTML += `
+            <div class="ledger-item">
+                <div style="flex: 1;">
+                    <strong>Epoch #${epoch}</strong> 
+                    <span class="confidence-tag" style="margin-left: 10px; font-size: 0.75rem;">${safeConf}</span>
+                </div>
+                <div style="flex: 1; text-align: right;">
+                    <span class="${dirClass}">Bet: ${safePredicted}</span> 
+                    &nbsp;—&nbsp; 
+                    <span class="${resClass}" style="text-transform: uppercase;">${safeResult}</span>
+                </div>
+            </div>`;
+        }
 
         function triggerWinEffect() {
             var duration = 3 * 1000; var animationEnd = Date.now() + duration;
