@@ -160,9 +160,9 @@ async function generatePrediction(targetEpoch) {
             return; 
         }
         
-        // FIX: Increased limit to 1000 for indicator warmup, added Date cache-buster for ScrapingBee
         const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1000&t=${Date.now()}`;
-        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}`;
+        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&block_ads=true&block_resources=true`;
+        
         const options = {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -171,23 +171,36 @@ async function generatePrediction(targetEpoch) {
         };
 
         let candles = null;
-        for (let i = 0; i < 3; i++) {
+        
+        // --- IMPROVED RESILIENCY: Exponential Backoff ---
+        for (let i = 0; i < 5; i++) {
             try {
                 const res = await fetch(scrapingBeeUrl, options);
+                
                 if (res.ok) {
-                    candles = await res.json();
-                    break;
+                    const data = await res.json();
+                    // Validate data structure before proceeding
+                    if (Array.isArray(data) && data.length >= 50) {
+                        candles = data;
+                        break; 
+                    } else {
+                        console.warn(`Attempt ${i+1}: Data incomplete. Length: ${data ? data.length : 0}`);
+                    }
                 } else {
-                    console.log(`ScrapingBee attempt ${i+1} failed with status: ${res.status}`);
+                    console.warn(`Attempt ${i+1}: ScrapingBee returned status: ${res.status}`);
                 }
             } catch (e) {
-                console.log(`ScrapingBee attempt ${i+1} caught error: ${e.message}`);
+                console.warn(`Attempt ${i+1}: Fetch error: ${e.message}`);
             }
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Wait longer each time (2s, 4s, 6s, 8s) to avoid spamming the API
+            const waitTime = (i + 1) * 2000;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
         }
 
-        if (!candles || candles.length < 50) {
-            throw new Error("ScrapingBee returned incomplete data. Skipping to prevent NaN math.");
+        if (!candles) {
+            console.error("❌ CRITICAL: Failed to fetch data after 5 retries. Aborting.");
+            return;
         }
         
         const opens = candles.map(c => parseFloat(c[1]));
