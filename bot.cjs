@@ -154,39 +154,52 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
+        const apiKey = process.env.SCRAPINGBEE_KEY;
+        if (!apiKey) {
+            console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
+            return; 
+        }
         
-        // Direct fetch from Binance API - No proxy needed
+        // Target Binance API
         const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1000`;
+        
+        // ScrapingBee configuration - Using 'render_js=false' to make it faster
+        // Using 'premium_proxy=true' is often required for Binance/Geo-restricted sites
+        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false&premium_proxy=true`;
         
         const options = {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Node.js/Bot)',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Accept': 'application/json'
             },
-            timeout: 5000 // 5-second timeout for responsiveness
+            timeout: 10000 // Increased timeout for proxy latency
         };
 
         let candles = null;
-
-        // Simple retry logic for direct connection
+        
         for (let i = 0; i < 3; i++) {
             try {
-                const res = await fetch(targetUrl, options);
+                const res = await fetch(scrapingBeeUrl, options);
+                
+                // If the proxy returns 500, we log the status and retry
                 if (res.ok) {
-                    candles = await res.json();
-                    break; 
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length >= 50) {
+                        candles = data;
+                        break; 
+                    }
                 } else {
-                    console.warn(`Attempt ${i+1}: Binance returned status ${res.status}`);
+                    console.warn(`Attempt ${i+1}: Proxy returned status ${res.status} - Check ScrapingBee logs`);
                 }
             } catch (e) {
-                console.warn(`Attempt ${i+1}: Fetch error: ${e.message}`);
+                console.warn(`Attempt ${i+1}: Proxy fetch error: ${e.message}`);
             }
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
-        if (!candles || candles.length < 50) {
-            throw new Error("Failed to fetch data from Binance directly.");
+        if (!candles) {
+            throw new Error("Proxy failed to return valid Binance data after retries.");
         }
         
         const opens = candles.map(c => parseFloat(c[1]));
