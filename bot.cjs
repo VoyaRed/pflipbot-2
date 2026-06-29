@@ -90,7 +90,7 @@ async function checkRound() {
                 .update({ 
                     current_pred: 'NONE', 
                     current_conf: 'Calculating...',
-                    thought_process: 'Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...'
+                    thought_process: `Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...`
                 })
                 .eq('id', 1);
             memoryStore[`cleared_${currentEpoch}`] = true;
