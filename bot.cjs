@@ -98,6 +98,8 @@ async function checkRound() {
                 .update({ 
                     current_pred: 'NONE', 
                     current_conf: 'Calculating...',
+                    rsi: null,
+                    macd: null,
                     thought_process: `Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...${lastAnalysis}`
                 })
                 .eq('id', 1);
@@ -171,6 +173,8 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
             price: price,
             current_pred: currentPred,
             current_conf: currentConf,
+            rsi: null,
+            macd: null,
             later_pred: laterPred,
             later_conf: laterConf,
             thought_process: thoughtProcess,
