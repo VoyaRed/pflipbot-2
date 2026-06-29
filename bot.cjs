@@ -174,8 +174,10 @@ async function generatePrediction(targetEpoch) {
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
-        if (!candles) throw new Error("ScrapingBee API failed after 3 retries");
-
+        if (!candles || candles.length < 50) {
+            throw new Error("ScrapingBee returned incomplete data. Skipping to prevent NaN math.");
+        }
+        
         const opens = candles.map(c => parseFloat(c[1]));
         const highs = candles.map(c => parseFloat(c[2]));
         const lows = candles.map(c => parseFloat(c[3]));
@@ -332,8 +334,8 @@ async function generatePrediction(targetEpoch) {
         }
 
         let netScore = Math.abs(upScore - downScore);
+        if (isNaN(netScore)) netScore = 0; // 🛡️ Prevents NaN confidence injection
         let prediction;
-
         // --- SUPER CHOPPY SKIP LOGIC ---
         // Only skip if volatility is extremely low AND neither side has a strong lead
         if ((atrPercentage < 0.04 || bbWidth < 0.0012) && netScore <= 2.0) {
@@ -355,7 +357,6 @@ async function generatePrediction(targetEpoch) {
         // --- TRUE CONVICTION SCALING ---
         let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
-        
         let displayConf = finalConfidence;
         
         // Format the UI display if it does decide to skip
@@ -366,6 +367,7 @@ async function generatePrediction(targetEpoch) {
 
         // Calculate "Later" Likelihood
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
+        if (isNaN(laterUpProb)) laterUpProb = 50; // 🛡️ Prevents NaN later confidence
         laterUpProb = Math.max(10, Math.min(90, laterUpProb)); 
         let laterDownProb = 100 - laterUpProb;
         let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
