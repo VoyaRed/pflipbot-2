@@ -379,18 +379,6 @@ async function generatePrediction(targetEpoch) {
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
 
-        // --- CONFLUENCE CHECK ---
-        let confluencePoints = 0;
-        if ((rsi < 40 && rsiSlope > 0) || (rsi > 60 && rsiSlope < 0)) confluencePoints += 2; // RSI Reversal
-        if (currentHist > 0 && prevHist > 0) confluencePoints += 1; // MACD Trend
-        if (currentClose > ema21) confluencePoints += 1; // EMA Trend
-        
-        // Only enter if confluence is high
-        if (confluencePoints < 2) {
-            prediction = "SKIP";
-            brainText.push("Insufficient confluence (Score: " + confluencePoints + "/4). Skipping to stay safe.");
-        }
-
         if (atrPercentage < 0.05 || isChoppy) {
             brainText.push("Volatility is extremely low, switching to a Choppy/Mean-Reversion strategy.");
             if (currentClose < sma) {
@@ -422,20 +410,36 @@ async function generatePrediction(targetEpoch) {
 
         let netScore = Math.abs(upScore - downScore);
         if (isNaN(netScore)) netScore = 0;
+
+        let prediction = "PENDING";
+        let forceSkip = false;
+
+        // --- CONFLUENCE CHECK ---
+        let confluencePoints = 0;
+        if ((rsi < 40 && rsiSlope > 0) || (rsi > 60 && rsiSlope < 0)) confluencePoints += 2; // RSI Reversal
+        if (currentHist > 0 && prevHist > 0) confluencePoints += 1; // MACD Trend
+        if (currentClose > ema21) confluencePoints += 1; // EMA Trend
         
-        let prediction;
-        if ((atrPercentage < 0.04 || bbWidth < 0.0012) && netScore <= 2.0) {
+        // Only enter if confluence is high
+        if (confluencePoints < 2) {
             prediction = "SKIP";
-            brainText.push("Conclusion: Signals are heavily mixed and price action is practically frozen. Initiating a SKIP to preserve capital.");
-        } else {
-            if (upScore === downScore) {
-                brainText.push("Data is tied. Using EMA trend alignment as the final tie-breaker.");
-                if (ema9 >= ema21) { upScore += 1.5; } 
-                else { downScore += 1.5; }
-                netScore = Math.abs(upScore - downScore);
+            brainText.push("Insufficient confluence (Score: " + confluencePoints + "/4). Skipping to stay safe.");
+        }
+        
+        // Only run the final prediction assignment if we aren't forcing a skip
+        if (!forceSkip) {
+            if ((atrPercentage < 0.04 || bbWidth < 0.0012) && netScore <= 2.0) {
+                prediction = "SKIP";
+                brainText.push("Conclusion: Signals are heavily mixed and price action is practically frozen. Initiating a SKIP to preserve capital.");
+            } else {
+                if (upScore === downScore) {
+                    brainText.push("Data is tied. Using EMA trend alignment as the final tie-breaker.");
+                    if (ema9 >= ema21) { upScore += 1.5; } else { downScore += 1.5; }
+                    netScore = Math.abs(upScore - downScore);
+                }
+                prediction = (upScore > downScore) ? "UP" : "DOWN";
+                brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
             }
-            prediction = (upScore > downScore) ? "UP" : "DOWN";
-            brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
         }
         
         const finalThoughtProcess = brainText.join(" ");
