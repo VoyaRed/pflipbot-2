@@ -611,8 +611,8 @@
             else if (log.result === "SKIP/UP") side = "UP";
             else if (log.result === "SKIP/DOWN") side = "DOWN";
 
-            if (side === "UP") return { text: "UP", class: "pred-up"; }
-            if (side === "DOWN") return { text: "DOWN", class: "pred-down"; }
+            if (side === "UP") return { text: "UP", class: "pred-up"};
+            if (side === "DOWN") return { text: "DOWN", class: "pred-down"};
             return { text: "---", class: "pred-waiting" };
         }
 
