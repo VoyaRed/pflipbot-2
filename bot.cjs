@@ -251,7 +251,8 @@ async function generatePrediction(targetEpoch) {
         });
 
         // --- LAYER 1: MARKET REGIME CLASSIFIER (PLAIN ENGLISH) ---
-        let marketRegime = "MEAN_REVERSION"; 
+        let marketRegime = "MEAN_REVERSION";
+        let regimeLog = "";
         
         // Quantifying trend strength
         const slowEMA50 = calculateEMA(closes, 50).pop();
