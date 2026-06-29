@@ -154,53 +154,39 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
-        const apiKey = process.env.SCRAPINGBEE_KEY;
-        if (!apiKey) {
-            console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
-            return; 
-        }
         
-        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1000&t=${Date.now()}`;
-        const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&block_ads=true&block_resources=true`;
+        // Direct fetch from Binance API - No proxy needed
+        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1000`;
         
         const options = {
+            method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'User-Agent': 'Mozilla/5.0 (Node.js/Bot)',
                 'Accept': 'application/json'
-            }
+            },
+            timeout: 5000 // 5-second timeout for responsiveness
         };
 
         let candles = null;
-        
-        // --- IMPROVED RESILIENCY: Exponential Backoff ---
-        for (let i = 0; i < 5; i++) {
+
+        // Simple retry logic for direct connection
+        for (let i = 0; i < 3; i++) {
             try {
-                const res = await fetch(scrapingBeeUrl, options);
-                
+                const res = await fetch(targetUrl, options);
                 if (res.ok) {
-                    const data = await res.json();
-                    // Validate data structure before proceeding
-                    if (Array.isArray(data) && data.length >= 50) {
-                        candles = data;
-                        break; 
-                    } else {
-                        console.warn(`Attempt ${i+1}: Data incomplete. Length: ${data ? data.length : 0}`);
-                    }
+                    candles = await res.json();
+                    break; 
                 } else {
-                    console.warn(`Attempt ${i+1}: ScrapingBee returned status: ${res.status}`);
+                    console.warn(`Attempt ${i+1}: Binance returned status ${res.status}`);
                 }
             } catch (e) {
                 console.warn(`Attempt ${i+1}: Fetch error: ${e.message}`);
             }
-            
-            // Wait longer each time (2s, 4s, 6s, 8s) to avoid spamming the API
-            const waitTime = (i + 1) * 2000;
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
-        if (!candles) {
-            console.error("❌ CRITICAL: Failed to fetch data after 5 retries. Aborting.");
-            return;
+        if (!candles || candles.length < 50) {
+            throw new Error("Failed to fetch data from Binance directly.");
         }
         
         const opens = candles.map(c => parseFloat(c[1]));
