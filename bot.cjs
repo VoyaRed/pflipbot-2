@@ -422,16 +422,13 @@ async function lockInPrediction(targetEpoch) {
         }).catch(err => console.error("Failed to post signal to Discord webhook server hook:", err));
     }
 
-    const { data, error } = await supabaseClient
-        .from('prediction_logs')
-        .upsert({ 
-            epoch_id: epoch,
-            prediction: safePredicted,
-            confidence: safeConf,
-            // ... your other fields
-        }, { 
-            onConflict: 'epoch_id' // This tells Supabase to overwrite if the epoch already exists
-        });
+    const { error } = await supabaseClient.from('prediction_logs').upsert([{ 
+        epoch_id: targetEpoch, 
+        predicted_side: bestData.pred, 
+        result: 'PENDING',
+        confidence: bestData.conf,
+        is_locked: true,        
+    }]);
     if (error) console.error("❌ Supabase Data Sync Failure:", error);
 
     // Keep the thought processing dashboard locked cleanly to ensure text flow isn't disrupted
