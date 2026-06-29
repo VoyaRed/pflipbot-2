@@ -434,7 +434,7 @@
                 if (macdEl && data.macd !== null && data.macd !== undefined) {
                     let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)";
                     macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
-                else {
+                } else {
                 // 🍰 Displays a styled question mark when the bot is scanning/waiting
                 macdEl.innerHTML = `<span style="color: var(--text-muted, #888)">?</span>`;
                 }        
