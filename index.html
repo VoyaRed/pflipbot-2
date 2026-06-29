@@ -473,22 +473,29 @@
                     laterBadge.className = `prediction-badge pred-${data.later_pred.toLowerCase()}`;
                 }
 
-                // CAPTURE THE LIVE NEXT PREDICTION
+                // CAPTURE THE LIVE NEXT PREDICTION (Safely)
                 if (data.current_pred && data.current_pred !== "NONE") {
                     liveNextPred = data.current_pred;
-                    liveNextConf = data.current_conf;
+                    liveNextConf = data.current_conf || "0%"; // Fallback if null
+                    
                     if (data.current_pred === "SKIP") {
-                        // 🐛 FIX: Added safety checks to ensure current_conf isn't null!
-                        if (data.current_conf && data.current_conf.includes("UP")) liveNextClass = "pred-skip-up";
-                        else if (data.current_conf && data.current_conf.includes("DOWN")) liveNextClass = "pred-skip-down";
+                        if (data.current_conf && String(data.current_conf).includes("UP")) liveNextClass = "pred-skip-up";
+                        else if (data.current_conf && String(data.current_conf).includes("DOWN")) liveNextClass = "pred-skip-down";
                         else liveNextClass = "pred-waiting";
                     } else {
-                        liveNextClass = `pred-${data.current_pred.toLowerCase()}`;
+                        liveNextClass = `pred-${String(data.current_pred).toLowerCase()}`;
                     }
                 } else {
                     liveNextPred = "Waiting...";
                     liveNextConf = "Calculating...";
                     liveNextClass = "pred-waiting";
+                }
+                
+                // Safely update the Later badge
+                const laterBadge = document.getElementById('later-pred-badge');
+                if (laterBadge && data.later_pred && data.later_pred !== "NONE") {
+                    laterBadge.innerText = `${data.later_pred} ${data.later_conf || 0}%`;
+                    laterBadge.className = `prediction-badge pred-${String(data.later_pred).toLowerCase()}`;
                 }
             }
         }
@@ -631,22 +638,31 @@
             setTimeout(runSyncLoop, 5000);
         }
 
-        // Helper to format actual bot prediction text and styling for SKIP handling
+        // 🛡️ BULLETPROOF HELPER: Safely handles nulls or broken database rows
         function getActualBetInfo(log) {
+            // Safety Check: If the row is broken or null, return a safe default
+            if (!log || !log.predicted_side || log.predicted_side === "NONE") {
+                return { text: "---", class: "pred-waiting" };
+            }
+            
             if (log.predicted_side === "SKIP") {
-                if (log.confidence && log.confidence.includes("Try: UP")) {
+                if (log.confidence && String(log.confidence).includes("Try: UP")) {
                     return { text: "SKIP/UP", class: "pred-skip-up" };
-                } else if (log.confidence && log.confidence.includes("Try: DOWN")) {
+                } else if (log.confidence && String(log.confidence).includes("Try: DOWN")) {
                     return { text: "SKIP/DOWN", class: "pred-skip-down" };
                 }
                 return { text: "SKIP", class: "pred-waiting" };
             }
-            return { text: log.predicted_side, class: `pred-${log.predicted_side.toLowerCase()}` };
+            // Safely convert to lowercase
+            return { text: log.predicted_side, class: `pred-${String(log.predicted_side).toLowerCase()}` };
         }
 
-        // Helper to map DB result to actual market movement (UP or DOWN)
+        // 🛡️ BULLETPROOF HELPER: Safely maps DB result to market movement
         function getActualResultInfo(log) {
-            if (!log.result || log.result === "PENDING") return { text: "---", class: "pred-waiting" };
+            // Safety Check
+            if (!log || !log.result || log.result === "PENDING" || !log.predicted_side) {
+                return { text: "---", class: "pred-waiting" };
+            }
             
             let actualMarket = "---";
             if (log.result === "WIN") {
@@ -664,7 +680,6 @@
             
             return { text: "---", class: "pred-waiting" };
         }
-
         function renderDashboardFromDB(logs, nextEpoch, liveEpoch, prevEpoch, oldPrevEpoch) {
             document.getElementById('ledger').innerHTML = ''; 
             const officialStatuses = ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'];
