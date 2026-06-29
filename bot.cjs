@@ -192,7 +192,7 @@ async function generatePrediction(targetEpoch) {
         
         for (let i = 0; i < 3; i++) {
             try {
-                const res = await fetch(PROXY_URL, options);
+                const res = await fetch(targetUrl, options);
                 
                 // If the proxy returns 500, we log the status and retry
                 if (res.ok) {
