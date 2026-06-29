@@ -466,13 +466,6 @@
                     macdEl.innerHTML = `<span style="color: ${macdColor}">${data.macd.toFixed(3)}</span>`;
                 }
 
-                // Update LATER Epoch likelihood
-                const laterBadge = document.getElementById('later-pred-badge');
-                if (laterBadge && data.later_pred && data.later_pred !== "NONE") {
-                    laterBadge.innerText = `${data.later_pred} ${data.later_conf}%`;
-                    laterBadge.className = `prediction-badge pred-${data.later_pred.toLowerCase()}`;
-                }
-
                 // CAPTURE THE LIVE NEXT PREDICTION (Safely)
                 if (data.current_pred && data.current_pred !== "NONE") {
                     liveNextPred = data.current_pred;
