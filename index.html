@@ -61,16 +61,26 @@
             --header-bg: #38222d; --pattern-1: rgba(255, 159, 67, 0.15); --pattern-2: rgba(255, 71, 87, 0.15);
             --neutral: #6c757d; 
         }
-
+        
+        @keyframes timeMachineActivation {
+            0% { filter: grayscale(0) contrast(1); transform: scale(1); }
+            10% { filter: invert(1) grayscale(1); transform: scale(1.02); }
+            20% { filter: invert(0) grayscale(1) contrast(1.5); transform: scale(0.98); }
+            100% { filter: grayscale(1) contrast(1.2); transform: scale(1); }
+        }
+        
         /* --- STARK BLACK & WHITE TEST THEME --- */
         body.test-mode-active {
             --bg: #000000 !important; --panel: #111111 !important; --text: #ffffff !important; 
             --subtext: #aaaaaa !important; --primary: #ffffff !important; --primary-glow: rgba(255, 255, 255, 0.2) !important;
             --accent: #888888 !important; --border: #333333 !important; --price-bg: #1c1c1c !important;
             --header-bg: #222222 !important; --pattern-1: rgba(255,255,255,0.03) !important; --pattern-2: rgba(255,255,255,0.03) !important;
+            
+            /* Triggers the B&W animation */
+            animation: timeMachineActivation 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
         }
         body.test-mode-active .test-banner { display: block !important; }
-        body.test-mode-active #tv-container { border-color: #222 !important; }
+        body.test-mode-active #tv-container { filter: grayscale(1) !important; border-color: #222 !important; }
         body.test-mode-active .card { border-color: #333 !important; }
         body.test-mode-active .card.live { border-color: #ffffff !important; animation: none !important; }
         
@@ -469,6 +479,15 @@
                         themeBtn.style.cursor = "not-allowed";
                         initTradingView();
                     }
+            // Change the heading to Test Price
+            if (headingEl) headingEl.innerText = "Test Price";
+            
+            // Sync the main price display to the exact price the bot used for its calculation
+            if (lastPriceEl && data.price) {
+                lastPriceEl.innerText = '$' + Number(data.price).toFixed(4);
+                lastPriceEl.className = 'main-price waiting'; 
+            }
+        } else {
                     if (headingEl) headingEl.innerText = "🔮 KNOWN FUTURE CLOSE";
                     
                     // The backend snuck the known future price and outcome into the later_conf string variable!
@@ -601,24 +620,38 @@
                 const nextRoundData = await contract.rounds(currentEpoch);
                 document.getElementById('next-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4)} BNB`;
 
-                if (liveEpoch > 0) {
-                    const liveRound = await contract.rounds(liveEpoch);
-                    const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
-                    lastLockedPrice = parseFloat(lockPrice); 
-                    document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
-                    document.getElementById('live-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4)} BNB`;
-                    startTimer(liveRound.closeTimestamp.toNumber());
-                }
+                if (!window.isTestModeActive) {
+                    // LIVE TIMELINE: Update UI with real blockchain data
+                    if (liveEpoch > 0) {
+                        const liveRound = await contract.rounds(liveEpoch);
+                        const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
+                        lastLockedPrice = parseFloat(lockPrice); 
+                        document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
+                        document.getElementById('live-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4)} BNB`;
+                        startTimer(liveRound.closeTimestamp.toNumber());
+                    }
 
-                if (prevEpoch > 0) {
-                    const prevRound = await contract.rounds(prevEpoch);
-                    if (prevRound.oracleCalled) {
-                        const lockPrice = parseFloat(ethers.utils.formatUnits(prevRound.lockPrice, 8));
-                        const closePrice = parseFloat(ethers.utils.formatUnits(prevRound.closePrice, 8));
-                        document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
-                        const closeEl = document.getElementById('prev-close-price');
-                        closeEl.innerText = `$${closePrice.toFixed(4)}`;
-                        closeEl.className = `main-price ${closePrice >= lockPrice ? 'up' : 'down'}`;
+                    if (prevEpoch > 0) {
+                        const prevRound = await contract.rounds(prevEpoch);
+                        if (prevRound.oracleCalled) {
+                            const lockPrice = parseFloat(ethers.utils.formatUnits(prevRound.lockPrice, 8));
+                            const closePrice = parseFloat(ethers.utils.formatUnits(prevRound.closePrice, 8));
+                            document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
+                            const closeEl = document.getElementById('prev-close-price');
+                            closeEl.innerText = `$${closePrice.toFixed(4)}`;
+                            closeEl.className = `main-price ${closePrice >= lockPrice ? 'up' : 'down'}`;
+                        }
+                    }
+                } else {
+                    // TEST TIMELINE: Mask the blockchain variables so they don't conflict
+                    document.getElementById('live-lock-price').innerText = `SIMULATED`;
+                    document.getElementById('live-prize-pool').innerText = `SIMULATED`;
+                    document.getElementById('prev-lock-price').innerText = `SIMULATED`;
+                    
+                    const closeEl = document.getElementById('prev-close-price');
+                    if (closeEl) {
+                        closeEl.innerText = `SIMULATED`;
+                        closeEl.className = `main-price waiting`;
                     }
                 }
 
