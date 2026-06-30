@@ -309,24 +309,20 @@ async function updateMarketStats(rsi, currentMACD, currentClose, currentPred = "
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
-        
         let candles = localCandles;
         
-        // Failsafe: If WebSocket hasn't populated yet, gracefully fallback to REST
+        // --- THE FIX: No more REST API Fallback ---
+        // If the array is empty or too small, we safely abort the prediction 
+        // for this loop and let the WebSocket keep doing its job.
         if (!candles || candles.length < 50) {
-            console.log("⚠️ Live stream not ready, falling back to REST API...");
-            try {
-                candles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
-            } catch (e) {
-                console.error("Direct connection failed:", e.message);
-                throw e; 
-            }
+            console.log("⚠️ Waiting for WebSocket to populate local candles... skipping prediction this tick.");
+            return; // Abort silently without triggering a ban
         }
 
         if (Array.isArray(candles) && candles.length >= 50) {
             console.log("✅ Binance market data verified (Zero-Latency).");
         } else {
-            throw new Error("Insufficient candles returned from Binance.");
+            throw new Error("Insufficient candles in local memory.");
         }
         
         const opens = candles.map(c => parseFloat(c[1]));
@@ -348,7 +344,7 @@ async function generatePrediction(targetEpoch) {
         let avgGain = gains.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         let avgLoss = losses.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         rsiHistory.push(avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss))));
-        
+
         for (let i = 14; i < gains.length; i++) {
             avgGain = ((avgGain * 13) + gains[i]) / 14;
             avgLoss = ((avgLoss * 13) + losses[i]) / 14;
@@ -367,6 +363,7 @@ async function generatePrediction(targetEpoch) {
         let rsiSlope = (rsi - previousRSI_3_candles_ago) / 3;
         let previousRSI_1_candle_ago = rsiHistory[rsiHistory.length - 2] || rsi;
         let previousRSI_4_candles_ago = rsiHistory[rsiHistory.length - 5] || previousRSI_3_candles_ago;
+
         let previousRSISlope = (previousRSI_1_candle_ago - previousRSI_4_candles_ago) / 3;
         let rsiAcceleration = rsiSlope - previousRSISlope;
 
@@ -423,7 +420,7 @@ async function generatePrediction(targetEpoch) {
             }
         });
 
-        // --- NEW: INITIALIZE STRUCTURED CATEGORY OBJECTS ---
+        // --- INITIALIZE STRUCTURED CATEGORY OBJECTS ---
         let upScore = 0, downScore = 0;
         let brainText = []; 
 
@@ -432,20 +429,20 @@ async function generatePrediction(targetEpoch) {
         let volScore = { up: 0, down: 0 };
         let patternScore = { up: 0, down: 0 };
 
-        // 🧠 TWEAK 1: RSI Exhaustion Penalties
+        // RSI Exhaustion Penalties
         if (rsiSlope > 0.5) {
             brainText.push("RSI is aggressively rising; momentum is strong.");
             if (rsi > 65) {
-                volScore.down += 2.5; // Exhaustion penalty for buying the top
+                volScore.down += 2.5;
                 brainText.push("Warning: RSI is highly overbought (>65) while surging. Anticipating a bearish exhaustion reversal.");
             } else {
-                trendScore.up += 1.0; 
+                trendScore.up += 1.0;
             }
         }
         if (rsiSlope < -0.5) {
             brainText.push("RSI is skyrocketing downward; bearish momentum is accelerating.");
             if (rsi < 35) {
-                volScore.up += 2.5; // Exhaustion penalty for selling the bottom
+                volScore.up += 2.5;
                 brainText.push("Warning: RSI is highly oversold (<35) while crashing. Anticipating a bullish exhaustion reversal.");
             } else {
                 trendScore.down += 1.0;
@@ -453,7 +450,7 @@ async function generatePrediction(targetEpoch) {
         }
         if (rsiAcceleration < 0 && rsi > 60) brainText.push("Warning: RSI rise is slowing down; potential overbought reversal.");
 
-        // CATEGORY 1: Round History (Max Contribution: 2.5)
+        // CATEGORY 1: Round History
         if (recentUps >= 3) { historyScore.up += 1.0; brainText.push("Recent historical rounds lean bullish."); }
         if (recentUps === 5) historyScore.up += 1.5;
         if (recentDowns >= 3) { historyScore.down += 1.0; brainText.push("Recent historical rounds lean bearish."); }
@@ -469,7 +466,7 @@ async function generatePrediction(targetEpoch) {
         const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
 
         const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
-        
+
         let trSum = 0;
         for (let i = closes.length - 14; i < closes.length; i++) {
             const highLow = highs[i] - lows[i];
@@ -478,12 +475,13 @@ async function generatePrediction(targetEpoch) {
             trSum += Math.max(highLow, highClose, lowClose);
         }
         const atrPercentage = ((trSum / 14) / currentClose) * 100;
+
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
-        
-        // 🧠 TWEAK 3: Adjusted Choppiness Threshold (0.05 -> 0.08) to recognize ranging markets faster
+
+        // Choppiness Threshold
         if ((atrPercentage < 0.08 || isChoppy) && ema9 > ema21) { 
-            volScore.up += 2.5; 
+            volScore.up += 2.5;
             brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
             if (currentClose < sma) {
                 volScore.up += 2.5;
@@ -495,7 +493,7 @@ async function generatePrediction(targetEpoch) {
                 if (rsi > 60) { volScore.down += 1.5; brainText.push(`RSI is elevated at ${rsi.toFixed(1)}, optimizing resistance threshold.`); }
             }
         } else if ((atrPercentage < 0.08 || isChoppy) && ema9 < ema21) {
-            volScore.down += 2.5; 
+            volScore.down += 2.5;
             brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
             if (currentClose > sma) {
                 volScore.down += 2.5;
@@ -503,10 +501,9 @@ async function generatePrediction(targetEpoch) {
             }
         } else {
             brainText.push("Market is showing structural momentum, engaging Trend analysis.");
-            
-            // 🧠 TWEAK 2: Nerfed EMAs (2.0 -> 1.0) & Buffed MACD (2.5 -> 3.0)
+
             if (ema9 > ema21) { 
-                trendScore.up += 1.0; 
+                trendScore.up += 1.0;
                 brainText.push("Fast EMA(9) leads Slow EMA(21) (Bullish configuration).");
             }
             if (ema9 < ema21) { 
@@ -515,12 +512,12 @@ async function generatePrediction(targetEpoch) {
             }
             
             if (currentMACD > currentSignal && currentHist > prevHist) { 
-                trendScore.up += 3.0; // Increased weight
-                brainText.push("MACD histogram is expanding upward, displaying strong structural expansion."); 
+                trendScore.up += 3.0;
+                brainText.push("MACD histogram is expanding upward, displaying strong structural expansion.");
             }
             if (currentMACD < currentSignal && currentHist < prevHist) { 
-                trendScore.down += 3.0; // Increased weight
-                brainText.push("MACD histogram is expanding downward, displaying strong structural compression."); 
+                trendScore.down += 3.0;
+                brainText.push("MACD histogram is expanding downward, displaying strong structural compression.");
             }
             
             if (roc3 > 0.15) trendScore.up += 3.0;
@@ -547,7 +544,7 @@ async function generatePrediction(targetEpoch) {
             }
         }
 
-        // --- APPLY CATEGORICAL CAPS TO ELIMINATE MOMENTUM OVERFLOWS ---
+        // --- APPLY CATEGORICAL CAPS ---
         historyScore.up = Math.min(historyScore.up, 2.5);
         historyScore.down = Math.min(historyScore.down, 2.5);
 
@@ -556,18 +553,17 @@ async function generatePrediction(targetEpoch) {
 
         volScore.up = Math.min(volScore.up, 5.0);
         volScore.down = Math.min(volScore.down, 5.0);
-
         patternScore.up = Math.min(patternScore.up, 3.5);
         patternScore.down = Math.min(patternScore.down, 3.5);
 
-        // Aggregate scores after caps are executed
+        // Aggregate scores
         upScore = historyScore.up + trendScore.up + volScore.up + patternScore.up;
         downScore = historyScore.down + trendScore.down + volScore.down + patternScore.down;
 
         let netScore = Math.abs(upScore - downScore);
         if (isNaN(netScore)) netScore = 0;
 
-        // Tie-breaker initialization
+        // Tie-breaker
         if (upScore === downScore) {
             brainText.push("Data is perfectly tied. Using directional EMA trend alignment as the structural tie-breaker.");
             if (ema9 >= ema21) { upScore += 1.5; } else { downScore += 1.5; }
@@ -576,7 +572,6 @@ async function generatePrediction(targetEpoch) {
         
         let currentPred = (upScore > downScore) ? "UP" : "DOWN";
         brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${currentPred}.`);
-        
         console.log(`📊 Category Breakdown [Target #${targetEpoch}] -> History: U:${historyScore.up}/D:${historyScore.down} | Trend: U:${trendScore.up}/D:${trendScore.down} | Volatility/BB: U:${volScore.up}/D:${volScore.down} | Patterns: U:${patternScore.up}/D:${patternScore.down}`);
 
         const ThoughtProcess = brainText.join(" ");
@@ -588,9 +583,9 @@ async function generatePrediction(targetEpoch) {
         if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
         let laterDownProb = 100 - laterUpProb;
+
         let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
-        
         console.log(`🔥 Live Scan Update! Direction: ${currentPred} | current_conf: ${displayConf}`);
         
         memoryStore[`best_${targetEpoch}`] = {
@@ -604,13 +599,12 @@ async function generatePrediction(targetEpoch) {
             price: currentClose,
             thought_process: ThoughtProcess
         };
-        
+
         await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
 }
-
 async function lockInPrediction(targetEpoch) {
     const bestData = memoryStore[`best_${targetEpoch}`];
     if (!bestData || bestData.numeric === -1) return;
