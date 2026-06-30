@@ -36,6 +36,14 @@
             animation: lockPop 0.6s ease-out; 
             border: 3px solid var(--primary) !important; 
         }
+
+        /* --- TEST MODE BANNER --- */
+        .test-banner {
+            display: none; width: 100%; background: #000; color: #fff;
+            text-align: center; padding: 12px 0; font-weight: 800;
+            font-size: 1.1rem; letter-spacing: 1px; border: 2px dashed #ff0055;
+            margin-bottom: 20px; border-radius: 12px; box-sizing: border-box;
+        }
         
         :root { 
             --bg: #fff0f5; --panel: #ffffff; --up: #31d0aa; --down: #ed4b9e; 
@@ -53,6 +61,18 @@
             --header-bg: #38222d; --pattern-1: rgba(255, 159, 67, 0.15); --pattern-2: rgba(255, 71, 87, 0.15);
             --neutral: #6c757d; 
         }
+
+        /* --- STARK BLACK & WHITE TEST THEME --- */
+        body.test-mode-active {
+            --bg: #000000 !important; --panel: #111111 !important; --text: #ffffff !important; 
+            --subtext: #aaaaaa !important; --primary: #ffffff !important; --primary-glow: rgba(255, 255, 255, 0.2) !important;
+            --accent: #888888 !important; --border: #333333 !important; --price-bg: #1c1c1c !important;
+            --header-bg: #222222 !important; --pattern-1: rgba(255,255,255,0.03) !important; --pattern-2: rgba(255,255,255,0.03) !important;
+        }
+        body.test-mode-active .test-banner { display: block !important; }
+        body.test-mode-active #tv-container { border-color: #222 !important; }
+        body.test-mode-active .card { border-color: #333 !important; }
+        body.test-mode-active .card.live { border-color: #ffffff !important; animation: none !important; }
         
         body { 
             background: var(--bg); color: var(--text); font-family: 'Kanit', sans-serif; 
@@ -62,7 +82,14 @@
         }
 
         .top-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 20px; }
-        .title { margin: 0; font-weight: 800; font-size: 2rem; color: var(--primary); text-shadow: 2px 2px 0px rgba(0,0,0,0.05); grid-column: 2; text-align: center; }
+        
+        .title { margin: 0; font-weight: 800; font-size: 2.2rem; text-shadow: 2px 2px 0px rgba(0,0,0,0.05); grid-column: 2; text-align: center; }
+        .brand-up { color: #39ff14; }
+        .brand-side { color: #888; }
+        .brand-down { color: #ff0033; }
+        .brand-cake { color: #ccc; }
+        body:not(.dark-mode):not(.test-mode-active) .brand-cake { color: #444; }
+
         .theme-btn { grid-column: 3; justify-self: end; background: var(--panel); color: var(--text); border: 2px solid var(--border); padding: 10px 20px; border-radius: 20px; font-family: 'Kanit', sans-serif; font-weight: 800; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .theme-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.1); border-color: var(--primary); }
 
@@ -106,8 +133,11 @@
         .live { border: 2px solid var(--primary); transform: scale(1.02); animation: pulseGlow 2.5s infinite; z-index: 10; }
         .live:hover { transform: scale(1.02) translateY(-8px); }
         .live .card-header { background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; }
+        body.test-mode-active .live .card-header { background: #ffffff !important; color: #000 !important; font-weight: 900;}
         
         .next .card-header { background: var(--primary); color: white; }
+        body.test-mode-active .next .card-header { background: #222 !important; color: white !important; }
+        
         .later-card .card-header { background: var(--header-bg); color: var(--subtext); }
         
         .prediction-badge { padding: 10px 15px; border-radius: 12px; font-size: 1.4rem; font-weight: 800; width: 100%; text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.1); }
@@ -122,6 +152,7 @@
         
         .progress-bg { background: var(--header-bg); border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; }
         .progress-fill { background: linear-gradient(90deg, var(--accent), var(--primary)); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
+        body.test-mode-active .progress-fill { background: #ffffff !important; }
         
         .price-box { background: var(--price-bg); border-radius: 16px; padding: 15px; width: 100%; box-sizing: border-box; text-align: left; border: 1px solid var(--border); margin-top: auto; }
         .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
@@ -161,6 +192,10 @@
     </style>
 </head>
 <body>
+    <div id="test-mode-banner" class="test-banner">
+        🚨 BINANCE RATE LIMIT DETECTED — TIME MACHINE ACTIVE (PULLING HISTORICAL VECTORS TO BYPASS LIMITS)
+    </div>
+
     <div id="loader-overlay">
         <div class="cake-flip">🎂</div>
         <h2 style="color: #ff6b6b; font-family: 'Kanit'; margin-top: 20px;">Flipping New Round...</h2>
@@ -168,7 +203,9 @@
 
     <div class="container">
         <div class="top-nav">
-            <h1 class="title">UpsideDownCake 🍰</h1>
+            <h1 class="title">
+                <span class="brand-up">Up</span><span class="brand-side">side</span><span class="brand-down">Down</span><span class="brand-cake">Cake</span> 🍰
+            </h1>
             <button id="theme-toggle" class="theme-btn">🌙 Dark Chocolate</button>
         </div>
 
@@ -237,7 +274,7 @@
                             </div>
 
                             <div class="price-box">
-                                <div class="price-label">Last Price (Oracle)</div>
+                                <div id="live-price-heading" class="price-label">Last Price (Oracle)</div>
                                 <div id="live-last-price" class="main-price waiting">---</div>
                                 <div class="price-row">
                                     <span>Locked Price:</span>
@@ -314,12 +351,16 @@
         const themeBtn = document.getElementById('theme-toggle');
         const currentTheme = localStorage.getItem('cakeTheme') || 'light';
         window.hasAnimatedLock = false;
+        window.isTestModeActive = false; // Globally track for Oracle killswitch
+
         if (currentTheme === 'dark') {
             document.body.classList.add('dark-mode');
             themeBtn.innerText = '☀️ Strawberry Vanilla';
         }
 
         themeBtn.addEventListener('click', () => {
+            if (document.body.classList.contains('test-mode-active')) return; // Lock theme in test mode
+            
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
             localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
@@ -328,7 +369,7 @@
         });
 
         function initTradingView() {
-            const isDark = document.body.classList.contains('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode') || document.body.classList.contains('test-mode-active');
             document.getElementById('tv-container').innerHTML = ''; 
             new TradingView.widget({ 
                 "container_id": "tv-container", 
@@ -397,7 +438,7 @@
         }
 
         async function fetchOraclePrice() {
-            if (!oracleContract) return;
+            if (!oracleContract || window.isTestModeActive) return; // Halt live oracle fetching if Time Machine is pulling the known future!
             try {
                 const data = await oracleContract.latestRoundData();
                 const price = (data.answer / 1e8); 
@@ -414,6 +455,38 @@
         async function updateMarketVisualsFromDB() {
             const { data, error } = await supabaseClient.from('market_stats').select('*').eq('id', 1).maybeSingle(); 
             if (data && !error) {
+
+                // --- TIME MACHINE UI INTERCEPTOR ---
+                window.isTestModeActive = data.test_mode;
+                const headingEl = document.getElementById('live-price-heading');
+                const lastPriceEl = document.getElementById('live-last-price');
+                
+                if (data.test_mode) {
+                    if (!document.body.classList.contains('test-mode-active')) {
+                        document.body.classList.add('test-mode-active');
+                        themeBtn.innerText = "🔒 SYSTEM LOCKED";
+                        themeBtn.style.opacity = "0.5";
+                        themeBtn.style.cursor = "not-allowed";
+                        initTradingView();
+                    }
+                    if (headingEl) headingEl.innerText = "🔮 KNOWN FUTURE CLOSE";
+                    
+                    // The backend snuck the known future price and outcome into the later_conf string variable!
+                    if (lastPriceEl && data.later_conf && data.later_conf.includes("$")) {
+                        lastPriceEl.innerText = data.later_conf;
+                        lastPriceEl.className = data.later_conf.includes("(Bot WIN)") || data.later_conf.includes("(WIN)") ? 'main-price up' : 'main-price down';
+                    }
+                } else {
+                    if (document.body.classList.contains('test-mode-active')) {
+                        document.body.classList.remove('test-mode-active');
+                        themeBtn.style.opacity = "1";
+                        themeBtn.style.cursor = "pointer";
+                        themeBtn.innerText = document.body.classList.contains('dark-mode') ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
+                        initTradingView();
+                    }
+                    if (headingEl) headingEl.innerText = "Last Price (Oracle)";
+                }
+
                 const rsiEl = document.getElementById('rsi');
                 const macdEl = document.getElementById('macd');
                 
@@ -438,17 +511,29 @@
                 if (data.current_pred && data.current_pred !== "NONE") {
                     liveNextPred = data.current_pred;
                     liveNextConf = data.current_conf || "0%"; 
-                    liveNextClass = `pred-${String(data.current_pred).toLowerCase()}`;
+                    
+                    if (data.current_pred === "SKIP") {
+                        if (data.current_conf && String(data.current_conf).includes("UP")) liveNextClass = "pred-skip-up";
+                        else if (data.current_conf && String(data.current_conf).includes("DOWN")) liveNextClass = "pred-skip-down";
+                        else liveNextClass = "pred-waiting";
+                    } else {
+                        liveNextClass = `pred-${String(data.current_pred).toLowerCase()}`;
+                    }
                 } else {
                     liveNextPred = "Waiting...";
                     liveNextConf = "Calculating...";
                     liveNextClass = "pred-waiting";
                 }
                 
+                // If not in test mode, display standard later early likelihood
                 const laterBadge = document.getElementById('later-pred-badge');
-                if (laterBadge && data.later_pred && data.later_pred !== "NONE") {
+                if (!data.test_mode && laterBadge && data.later_pred && data.later_pred !== "NONE") {
                     laterBadge.innerText = `${data.later_pred} ${data.later_conf || 0}%`;
                     laterBadge.className = `prediction-badge pred-${String(data.later_pred).toLowerCase()}`;
+                } else if (data.test_mode && laterBadge) {
+                    // Hide the standard "Later" estimation during time machine active states as it's hijacked
+                    laterBadge.innerText = "TEST OVERRIDE";
+                    laterBadge.className = `prediction-badge pred-waiting`;
                 }
             }
         }
@@ -550,17 +635,20 @@
                             if (dynamicResultCache[log.epoch_id]) {
                                 log.result = dynamicResultCache[log.epoch_id];
                             } else {
-                                try {
-                                    const round = await contract.rounds(log.epoch_id);
-                                    if (round.oracleCalled) {
-                                        const lockP = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
-                                        const closeP = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
-                                        const actualMarketResult = closeP > lockP ? "UP" : "DOWN";
-                                        let finalStatus = log.predicted_side === "SKIP" ? "SKIP/" + actualMarketResult : (log.predicted_side === actualMarketResult ? "WIN" : "LOSS");
-                                        log.result = finalStatus;
-                                        dynamicResultCache[log.epoch_id] = finalStatus; 
-                                    }
-                                } catch (e) { }
+                                // Only override cache dynamically if it's NOT a mock test result
+                                if (!log.result.includes("TEST-")) {
+                                    try {
+                                        const round = await contract.rounds(log.epoch_id);
+                                        if (round.oracleCalled) {
+                                            const lockP = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
+                                            const closeP = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
+                                            const actualMarketResult = closeP > lockP ? "UP" : "DOWN";
+                                            let finalStatus = log.predicted_side === "SKIP" ? "SKIP/" + actualMarketResult : (log.predicted_side === actualMarketResult ? "WIN" : "LOSS");
+                                            log.result = finalStatus;
+                                            dynamicResultCache[log.epoch_id] = finalStatus; 
+                                        }
+                                    } catch (e) { }
+                                }
                             }
                         }
                     }
@@ -573,16 +661,23 @@
 
         function getActualBetInfo(log) {
             if (!log || !log.predicted_side || log.predicted_side === "NONE") return { text: "---", class: "pred-waiting" };
+            if (log.predicted_side === "SKIP") {
+                if (log.confidence && String(log.confidence).includes("Try: UP")) return { text: "SKIP", class: "pred-skip-up" };
+                else if (log.confidence && String(log.confidence).includes("Try: DOWN")) return { text: "SKIP", class: "pred-skip-down" };
+                return { text: "SKIP", class: "pred-waiting" };
+            }
             return { text: log.predicted_side, class: `pred-${String(log.predicted_side).toLowerCase()}` };
         }
 
         function getActualResultInfo(log) {
             if (!log || !log.result || log.result === "PENDING" || !log.predicted_side) return { text: "---", class: "pred-waiting" };
+            
+            // Extract core market move regardless of test prefixes
             let actualMarket = "---";
-            if (log.result === "WIN") actualMarket = log.predicted_side;
-            else if (log.result === "LOSS") actualMarket = (log.predicted_side === "UP") ? "DOWN" : "UP";
-            else if (log.result === "SKIP/UP") actualMarket = "UP";
-            else if (log.result === "SKIP/DOWN") actualMarket = "DOWN";
+            if (log.result.includes("WIN")) actualMarket = log.predicted_side;
+            else if (log.result.includes("LOSS")) actualMarket = (log.predicted_side === "UP") ? "DOWN" : "UP";
+            else if (log.result.includes("SKIP/UP")) actualMarket = "UP";
+            else if (log.result.includes("SKIP/DOWN")) actualMarket = "DOWN";
 
             if (actualMarket === "UP") return { text: "UP", class: "pred-up" };
             if (actualMarket === "DOWN") return { text: "DOWN", class: "pred-down" };
@@ -591,14 +686,16 @@
 
         function renderDashboardFromDB(logs, nextEpoch, liveEpoch, prevEpoch, oldPrevEpoch) {
             document.getElementById('ledger').innerHTML = ''; 
-            const officialStatuses = ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'];
-            const resolvedLogs = logs.filter(log => officialStatuses.includes(log.result));
             
-            const recent15Mixed = resolvedLogs.slice(0, 15);
+            // Only aggregate REAL live market execution records into the win rate display
+            const officialRealStatuses = ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'];
+            const resolvedLiveLogs = logs.filter(log => officialRealStatuses.includes(log.result));
+            
+            const recent15Mixed = resolvedLiveLogs.slice(0, 15);
             let mixedWins = recent15Mixed.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const mixedWinRate = recent15Mixed.length > 0 ? ((mixedWins / recent15Mixed.length) * 100).toFixed(1) : "0.0";
             
-            const trendLogs = resolvedLogs.filter(log => {
+            const trendLogs = resolvedLiveLogs.filter(log => {
                 if (!log.confidence) return false; 
                 const match = String(log.confidence).match(/(\d+(?:\.\d+)?)/);
                 return match ? parseFloat(match[1]) >= 55.0 : false;
@@ -623,7 +720,9 @@
                 `;
             }
 
-            logs.forEach(log => renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence));
+            // Render ALL logs to the ledger, including Test modes
+            const visibleLogs = logs.filter(log => log.result !== 'PENDING');
+            visibleLogs.forEach(log => renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence));
 
             const nextLog = logs.find(l => l.epoch_id == nextEpoch);
             const liveLog = logs.find(l => l.epoch_id == liveEpoch);
@@ -637,9 +736,9 @@
                     document.querySelector('.live .card-header span:first-child').innerText = '🔒 LOCKED';
                 }
             }
-            if (prevLog && prevLog.result && officialStatuses.includes(prevLog.result)) {
+            if (prevLog && prevLog.result && prevLog.result !== 'PENDING') {
                 if (!notifiedEpochs.has(prevEpoch)) {
-                    if (prevLog.result === 'WIN' || prevLog.result === 'SKIP/UP') {
+                    if ((prevLog.result === 'WIN' || prevLog.result === 'SKIP/UP') && !document.body.classList.contains('test-mode-active')) {
                         triggerWinEffect();
                     } else if (prevLog.result === 'LOSS' || prevLog.result === 'SKIP/DOWN') {
                         const expiredCard = document.querySelector('.card.expired:not(.old-expired)');
@@ -711,7 +810,12 @@
             const safeConf = confidence || "--%";
         
             let resClass = "status-skip";
-            if (safeResult.includes("WIN")) resClass = "status-win";
+            let displayResult = safeResult.toUpperCase();
+            
+            // Format Simulated Test Modes distinctly from Real modes
+            if (safeResult.includes("TEST-WIN")) { resClass = "status-win"; displayResult = "🧪 WIN"; }
+            else if (safeResult.includes("TEST-LOSS")) { resClass = "status-loss"; displayResult = "🧪 LOSS"; }
+            else if (safeResult.includes("WIN")) resClass = "status-win";
             else if (safeResult.includes("LOSS")) resClass = "status-loss";
             
             let dirClass = "dir-skip";
@@ -728,7 +832,7 @@
                 <div style="flex: 1; text-align: right;">
                     <span class="${dirClass}">Bet: ${safePredicted}</span> 
                     &nbsp;—&nbsp; 
-                    <span class="${resClass}" style="text-transform: uppercase;">${safeResult}</span>
+                    <span class="${resClass}">${displayResult}</span>
                 </div>
             `;
             
