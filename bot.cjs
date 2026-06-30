@@ -183,8 +183,6 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
     if (error) console.error("Error updating stats:", error);
 }
 
-const { HttpsProxyAgent } = require('https-proxy-agent');
-
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
