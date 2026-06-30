@@ -396,6 +396,9 @@ async function generatePrediction(targetEpoch) {
             price: currentClose,
             thought_process: ThoughtProcess
         };
+
+        console.log("DEBUG: MACD value being sent:", currentMACD);
+        console.log("DEBUG: RSI value being sent:", rsi);
         
         await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
     } catch (e) {
