@@ -4,6 +4,12 @@ const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const ccxt = require('ccxt'); 
 const WebSocket = require('ws'); // <-- NEW: Imported WebSocket library
+const { TA_Handler, Interval, Exchange } = require('tradingview-ta'); // <-- NEW: TradingView Screener
+
+// --- CONFIG ---
+const GLOBAL_CONFIG = {
+    THRESHOLD: 65.0 // Minimum % confidence to place a bet (otherwise it SKIPs)
+};
 
 // --- CONFIG ---
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
@@ -95,6 +101,35 @@ async function findFastestRPC() {
         }
     }
     throw new Error("All RPC nodes failed.");
+}
+
+// --- NEW: TradingView Signal Fetcher ---
+async function getTVSignals() {
+    try {
+        const setup = { symbol: "BNBUSDT", exchange: "BINANCE", screener: "CRYPTO" };
+        
+        // Fetch 1-Minute and 5-Minute Signals
+        const tv1m = new TA_Handler({ ...setup, interval: Interval.1m });
+        const tv5m = new TA_Handler({ ...setup, interval: Interval.5m });
+
+        const [res1m, res5m] = await Promise.all([tv1m.getAnalysis(), tv5m.getAnalysis()]);
+
+        const minRec = res1m.summary;
+        const medRec = res5m.summary;
+
+        // Average the BUY and SELL signals like the Python script
+        const averageBuy = (minRec.BUY + medRec.BUY) / 2;
+        const averageSell = (minRec.SELL + medRec.SELL) / 2;
+
+        return {
+            buy: averageBuy,
+            sell: averageSell,
+            total: averageBuy + averageSell
+        };
+    } catch (error) {
+        console.warn("⚠️ TradingView Signal fetch failed, skipping TV score this round.");
+        return null;
+    }
 }
 
 let isInitialFetchDone = false;
@@ -541,21 +576,38 @@ async function generatePrediction(targetEpoch) {
             }
         }
 
+        // --- NEW: CATEGORY 5: TradingView Multi-Timeframe Signals ---
+        const tvData = await getTVSignals();
+        if (tvData && tvData.total > 0) {
+            const buyPercentage = (tvData.buy / tvData.total) * 100;
+            const sellPercentage = (tvData.sell / tvData.total) * 100;
+
+            if (buyPercentage > 60) {
+                tvScore.up += 3.0;
+                brainText.push(`TradingView 1m/5m signals align Bullish (${buyPercentage.toFixed(1)}% Buy).`);
+            } else if (sellPercentage > 60) {
+                tvScore.down += 3.0;
+                brainText.push(`TradingView 1m/5m signals align Bearish (${sellPercentage.toFixed(1)}% Sell).`);
+            } else {
+                brainText.push("TradingView signals are neutral/conflicting. Ignoring external data.");
+            }
+        }
+
         // --- APPLY CATEGORICAL CAPS ---
         historyScore.up = Math.min(historyScore.up, 2.5);
         historyScore.down = Math.min(historyScore.down, 2.5);
-
         trendScore.up = Math.min(trendScore.up, 4.5);
         trendScore.down = Math.min(trendScore.down, 4.5);
-
         volScore.up = Math.min(volScore.up, 5.0);
         volScore.down = Math.min(volScore.down, 5.0);
         patternScore.up = Math.min(patternScore.up, 3.5);
         patternScore.down = Math.min(patternScore.down, 3.5);
+        tvScore.up = Math.min(tvScore.up, 3.0);      // <-- NEW
+        tvScore.down = Math.min(tvScore.down, 3.0);  // <-- NEW
 
         // Aggregate scores
-        upScore = historyScore.up + trendScore.up + volScore.up + patternScore.up;
-        downScore = historyScore.down + trendScore.down + volScore.down + patternScore.down;
+        upScore = historyScore.up + trendScore.up + volScore.up + patternScore.up + tvScore.up;
+        downScore = historyScore.down + trendScore.down + volScore.down + patternScore.down + tvScore.down;
 
         let netScore = Math.abs(upScore - downScore);
         if (isNaN(netScore)) netScore = 0;
@@ -567,23 +619,20 @@ async function generatePrediction(targetEpoch) {
             netScore = Math.abs(upScore - downScore);
         }
         
-        let currentPred = (upScore > downScore) ? "UP" : "DOWN";
-        brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${currentPred}.`);
-        console.log(`📊 Category Breakdown [Target #${targetEpoch}] -> History: U:${historyScore.up}/D:${historyScore.down} | Trend: U:${trendScore.up}/D:${trendScore.down} | Volatility/BB: U:${volScore.up}/D:${volScore.down} | Patterns: U:${patternScore.up}/D:${patternScore.down}`);
+        // Base Calculation
+        let rawPred = (upScore > downScore) ? "UP" : "DOWN";
+        let numericConfidence = Math.min(95.0, 50 + (netScore * 3.5)); // Boosted multiplier slightly to account for new max score
+        let currentPred = rawPred;
 
-        const ThoughtProcess = brainText.join(" ");
-        let numericConfidence = Math.min(92.0, 60 + (netScore * 2.5));
-        let finalConfidence = numericConfidence.toFixed(1) + "%";
-        let displayConf = finalConfidence;
-        
-        let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
-        if (isNaN(laterUpProb)) laterUpProb = 50; 
-        laterUpProb = Math.max(10, Math.min(90, laterUpProb));
-        let laterDownProb = 100 - laterUpProb;
+        // --- NEW: THRESHOLD LOGIC FROM PYTHON SCRIPT ---
+        if (numericConfidence < GLOBAL_CONFIG.THRESHOLD) {
+            brainText.push(`Conclusion: Confidence (${numericConfidence.toFixed(1)}%) is below the safe threshold of ${GLOBAL_CONFIG.THRESHOLD}%. Skipping round.`);
+            currentPred = "SKIP"; // Forces the bot to sit out 
+        } else {
+            brainText.push(`Conclusion: The aggregate weight firmly favors ${currentPred} above the safety threshold.`);
+        }
 
-        let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
-        let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
-        console.log(`🔥 Live Scan Update! Direction: ${currentPred} | current_conf: ${displayConf}`);
+        console.log(`📊 Category Breakdown -> History: U:${historyScore.up}/D:${historyScore.down} | Trend: U:${trendScore.up}/D:${trendScore.down} | Volatility: U:${volScore.up}/D:${volScore.down} | Patterns: U:${patternScore.up}/D:${patternScore.down} | TV: U:${tvScore.up}/D:${tvScore.down}`);
         
         memoryStore[`best_${targetEpoch}`] = {
             current_pred: currentPred,
