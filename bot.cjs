@@ -124,7 +124,7 @@ async function checkRound() {
         if (!memoryStore[`best_${currentEpoch}`]) {
             console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback direction prediction.`);
             memoryStore[`best_${currentEpoch}`] = {
-                current_pred: "SKIP", // Default fallback direction
+                current_pred: "NONE", // Default fallback direction
                 current_conf: "binance trippin 1sec",
                 numeric: 50,
                 later_pred: "NONE",
