@@ -45,6 +45,10 @@ function startCandleStream() {
     ws.on('message', (data) => {
         const message = JSON.parse(data);
         const kline = message.k; 
+
+        if (Math.random() < 0.01) { 
+            console.log(`✅ Heartbeat: Received tick for BNB/USDT. Current Close: ${kline.c}`);
+        }
         
         // Match the exact format of CCXT's fetchOHLCV [Time, Open, High, Low, Close, Volume]
         const candle = [
