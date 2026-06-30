@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+const fs = require('fs');
+const path = require('path');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 // Function to load and parse proxies from proxies.txt
 function loadProxies() {
@@ -32,15 +32,19 @@ const proxyList = loadProxies();
  * Selects a random proxy and returns an HttpsProxyAgent instance.
  * Returns null if no proxies are available, allowing a direct connection fallback.
  */
-export function getRandomProxyAgent() {
+function getRandomProxyAgent() {
   if (proxyList.length === 0) return null;
 
   // Pick a random index
   const randomIndex = Math.floor(Math.random() * proxyList.length);
   const proxyUrl = proxyList[randomIndex];
 
-  // Optional: Log which proxy is being used for debugging
   console.log(`Routing request through proxy: ${proxyUrl}`);
 
   return new HttpsProxyAgent(proxyUrl);
 }
+
+// Export using CommonJS syntax
+module.exports = {
+  getRandomProxyAgent
+};
