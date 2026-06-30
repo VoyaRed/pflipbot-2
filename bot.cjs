@@ -3,6 +3,7 @@ const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const ccxt = require('ccxt'); 
+const WebSocket = require('ws'); // <-- NEW: Imported WebSocket library
 
 // --- CONFIG ---
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
@@ -28,12 +29,57 @@ let memoryStore = {};
 let lastScrapeTime = 0;
 const SCRAPE_INTERVAL = 22000; 
 
+// <-- NEW: Local storage for our zero-latency candles
+let localCandles = []; 
+
+// <-- NEW: WebSocket Stream Manager
+function startCandleStream() {
+    // Connect to BNB/USDT on the 5-minute timeframe
+    const wsUrl = 'wss://stream.binance.com:9443/ws/bnbusdt@kline_5m';
+    const ws = new WebSocket(wsUrl);
+
+    ws.on('open', () => {
+        console.log("🔌 Live WebSocket connected to Binance (BNB/USDT 5m)");
+    });
+
+    ws.on('message', (data) => {
+        const message = JSON.parse(data);
+        const kline = message.k; 
+        
+        // Match the exact format of CCXT's fetchOHLCV [Time, Open, High, Low, Close, Volume]
+        const candle = [
+            kline.t,
+            parseFloat(kline.o),
+            parseFloat(kline.h),
+            parseFloat(kline.l),
+            parseFloat(kline.c),
+            parseFloat(kline.v)
+        ];
+
+        // Update the current candle if time matches, otherwise push new candle
+        if (localCandles.length > 0 && localCandles[localCandles.length - 1][0] === candle[0]) {
+            localCandles[localCandles.length - 1] = candle; 
+        } else {
+            localCandles.push(candle);
+            // Keep exactly 1000 candles in memory to match your previous limit
+            if (localCandles.length > 1000) localCandles.shift(); 
+        }
+    });
+
+    ws.on('error', (err) => console.error("❌ WebSocket Error:", err));
+    ws.on('close', () => {
+        console.log("🔌 WebSocket disconnected. Reconnecting in 5 seconds...");
+        setTimeout(startCandleStream, 5000);
+    });
+}
+
 async function findFastestRPC() {
     const nodes = [
         "https://bsc-rpc.publicnode.com",
         "https://binance.llamarpc.com",
         "https://bsc-dataseed.binance.org"
     ];
+
     for (let url of nodes) {
         try {
             const p = new ethers.providers.JsonRpcProvider(url);
@@ -50,9 +96,19 @@ async function findFastestRPC() {
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
     try {
+        // <-- NEW: Load markets once on startup to completely kill the 429 error
+        console.log("Loading Binance markets to prevent rate limits...");
+        await exchange.loadMarkets();
+        
+        // <-- NEW: Fetch initial 1000 candles for our EMA math, then let WS take over
+        console.log("Fetching initial 1000 candles...");
+        localCandles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
+        startCandleStream(); 
+
         const fastest = await findFastestRPC();
         provider = fastest.provider;
         contract = fastest.contract;
+
         console.log("✅ Connected to BSC successfully.");
         runLoop();
     } catch (error) {
@@ -72,7 +128,7 @@ async function runLoop() {
 
 async function checkRound() {
     const currentEpoch = (await contract.currentEpoch()).toNumber();
-    
+
     // Garbage Collection for old epochs
     const staleEpoch = currentEpoch - 10;
     Object.keys(memoryStore).forEach(key => {
@@ -181,19 +237,26 @@ async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
         
-        let candles = null;
+        // <-- CHANGED: Use the local WebSocket candles instead of polling CCXT
+        let candles = localCandles;
         
-        try {
-            candles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
-            if (Array.isArray(candles) && candles.length >= 50) {
-                console.log("✅ Binance market data successfully retrieved.");
-            } else {
-                throw new Error("Insufficient candles returned from Binance.");
+        // Failsafe: If WebSocket hasn't populated yet, gracefully fallback to REST
+        if (!candles || candles.length < 50) {
+            console.log("⚠️ Live stream not ready, falling back to REST API...");
+            try {
+                candles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
+            } catch (e) {
+                console.error("Direct connection failed:", e.message);
+                throw e; 
             }
-        } catch (e) {
-            console.error("Direct connection failed:", e.message);
-            throw e; 
         }
+
+        if (Array.isArray(candles) && candles.length >= 50) {
+            console.log("✅ Binance market data verified (Zero-Latency).");
+        } else {
+            throw new Error("Insufficient candles returned from Binance.");
+        }
+        // <-- END CHANGED
         
         const opens = candles.map(c => parseFloat(c[1]));
         const highs = candles.map(c => parseFloat(c[2]));
@@ -236,6 +299,7 @@ async function generatePrediction(targetEpoch) {
         let previousRSI_1_candle_ago = rsiHistory[rsiHistory.length - 2] || rsi;
         let previousRSI_4_candles_ago = rsiHistory[rsiHistory.length - 5] || previousRSI_3_candles_ago;
         let previousRSISlope = (previousRSI_1_candle_ago - previousRSI_4_candles_ago) / 3;
+
         let rsiAcceleration = rsiSlope - previousRSISlope;
 
         // Bollinger Bands
@@ -262,11 +326,10 @@ async function generatePrediction(targetEpoch) {
         const ema21 = calculateEMAArray(closes, 21)[closes.length - 1];
         const ema12Array = calculateEMAArray(closes, 12);
         const ema26Array = calculateEMAArray(closes, 26);
-        
         const macdLineArray = ema12Array.map((v, i) => v - ema26Array[i]);
         const signalLineArray = calculateEMAArray(macdLineArray, 9);
+
         const currentMACD = macdLineArray[macdLineArray.length - 1];
-        
         const currentSignal = signalLineArray[signalLineArray.length - 1];
         const currentHist = currentMACD - currentSignal;
         const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
@@ -314,8 +377,9 @@ async function generatePrediction(targetEpoch) {
         const upperWick = prevHigh - Math.max(prevOpen, prevClose);
         const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
         const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
+
         const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
-        
+
         let trSum = 0;
         for (let i = closes.length - 14; i < closes.length; i++) {
             const highLow = highs[i] - lows[i];
@@ -324,7 +388,7 @@ async function generatePrediction(targetEpoch) {
             trSum += Math.max(highLow, highClose, lowClose);
         }
         const atrPercentage = ((trSum / 14) / currentClose) * 100;
-        
+
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
 
@@ -367,7 +431,6 @@ async function generatePrediction(targetEpoch) {
             netScore = Math.abs(upScore - downScore);
         }
         
-        // FIX: The prediction is now permanently tied to the exact direction the bot favors.
         let currentPred = (upScore > downScore) ? "UP" : "DOWN";
         brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${currentPred}.`);
         
@@ -380,9 +443,9 @@ async function generatePrediction(targetEpoch) {
         if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
         let laterDownProb = 100 - laterUpProb;
-        
         let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
+
         console.log(`🔥 Live Scan Update! Direction: ${currentPred} | current_conf: ${displayConf}`);
         
         memoryStore[`best_${targetEpoch}`] = {
@@ -396,10 +459,9 @@ async function generatePrediction(targetEpoch) {
             price: currentClose,
             thought_process: ThoughtProcess
         };
-
+        
         console.log("DEBUG: MACD value being sent:", currentMACD);
         console.log("DEBUG: RSI value being sent:", rsi);
-        
         await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
@@ -409,10 +471,10 @@ async function generatePrediction(targetEpoch) {
 async function lockInPrediction(targetEpoch) {
     const bestData = memoryStore[`best_${targetEpoch}`];
     if (!bestData || bestData.numeric === -1) return;
-    
+
     memoryStore[`locked_${targetEpoch}`] = true;
     console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.current_pred} (${bestData.current_conf})`);
-    
+
     if (bestData.numeric >= 75.0) {
         const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
         fetch(webhookUrl, {
@@ -434,7 +496,7 @@ async function lockInPrediction(targetEpoch) {
     }], { 
         onConflict: 'epoch_id' 
     });
-    
+
     if (error) console.error("❌ Early Supabase insert error:", error);
     await updateMarketStats(bestData.rsi, bestData.macd, bestData.price, "NONE", "Calculating...", bestData.later_pred, bestData.later_conf, bestData.thought_process);
 }
@@ -459,7 +521,7 @@ async function verifyResult(epochToCheck) {
             .select('*')
             .eq('epoch_id', epochToCheck)
             .single();
-            
+
         if (fetchError || !data) return;
         if (data.result !== 'PENDING') return;
         
@@ -467,17 +529,18 @@ async function verifyResult(epochToCheck) {
         if (actualResult === "TIE") {
             resultStatus = "TIE";
         } else if (data.predicted_side.startsWith("SKIP")) {
-            resultStatus = "SKIP/" + actualResult; // Legacy handler for old rows
+            resultStatus = "SKIP/" + actualResult;
         } else {
             resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
         }
 
         console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
+
         const { error: updateError } = await supabaseClient
             .from('prediction_logs')
             .update({ result: resultStatus })
             .eq('epoch_id', epochToCheck);
-            
+
         if (updateError) {
             console.error(`❌ Supabase Update Error for Epoch ${epochToCheck}:`, updateError.message);
             return;
@@ -489,7 +552,7 @@ async function verifyResult(epochToCheck) {
             .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
             .order('epoch_id', { ascending: false })
             .limit(15);
-            
+
         if (recentLogs && recentLogs.length > 0) {
             const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const mixedRate = ((mixedWins / recentLogs.length) * 100).toFixed(1);
@@ -498,6 +561,7 @@ async function verifyResult(epochToCheck) {
                 const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
                 return match ? parseFloat(match[1]) >= 55.0 : false;
             });
+
             const trendWins = trendLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
             const trendRate = trendLogs.length > 0 ? ((trendWins / trendLogs.length) * 100).toFixed(1) : "0.0";
 
@@ -505,7 +569,7 @@ async function verifyResult(epochToCheck) {
             console.log(`🚀 Trend Market (Conviction > 55%): ${trendRate}%`);
         }
     } catch(e) { 
-        console.error("Result Verification Failed:", e); 
+        console.error("Result Verification Failed:", e);
     }
 }
 
