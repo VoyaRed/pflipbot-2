@@ -198,8 +198,10 @@ async function generatePrediction(targetEpoch) {
         
         let candles = null;
         
-        for (let i = 0; i < 3; i++) {
-            // 1. Extract both the operational agent and the raw proxy string
+        // 1. Drastically increase retries. We have 3800+ proxies, let's use them.
+        const maxRetries = 12; 
+        
+        for (let i = 0; i < maxRetries; i++) {
             const { agent, url } = getRandomProxy();
             
             try {
@@ -210,13 +212,12 @@ async function generatePrediction(targetEpoch) {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                         'Accept': 'application/json'
                     },
-                    timeout: 8000 // Slightly lower timeout so bad proxies fail quickly
+                    // 2. Lower timeout to 4s. Fail fast so we don't miss the epoch lock.
+                    timeout: 4000 
                 };
 
                 if (url) {
-                    console.log(`[Attempt ${i+1}] Routing via: ${url}`);
-                } else {
-                    console.warn(`[Attempt ${i+1}] Proxy pool empty! Attempting direct connection.`);
+                    console.log(`[Attempt ${i+1}/${maxRetries}] Routing via: ${url}`);
                 }
 
                 const res = await fetch(targetUrl, options);
@@ -225,25 +226,54 @@ async function generatePrediction(targetEpoch) {
                     const data = await res.json();
                     if (Array.isArray(data) && data.length >= 50) {
                         candles = data;
-                        break; // Found working data, exit loop immediately
+                        console.log(`✅ Proxy success on attempt ${i+1}!`);
+                        break; 
                     }
                 } else {
-                    console.warn(`Attempt ${i+1}: Received bad status code ${res.status}. Dropping proxy.`);
-                    banProxy(url); // Remove poorly performing IP from rotation
+                    console.warn(`Attempt ${i+1}: Bad status code ${res.status}. Banning proxy.`);
+                    banProxy(url); 
                 }
             } catch (e) {
-                console.warn(`Attempt ${i+1} Failure (${e.message}). Dropping proxy.`);
-                banProxy(url); // Remove dead/timed-out IP from rotation
+                console.warn(`Attempt ${i+1} Failure: ${e.message}. Banning proxy.`);
+                banProxy(url); 
             }
             
-            // Wait 1.5 seconds before hitting the next proxy in the pool
+            // 3. Shorter delay. Get right to the next proxy.
             if (!candles) {
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
+        // 4. DIRECT FALLBACK: If 12 proxies fail, try your server's real IP as a last resort
+        if (!candles) {
+            console.warn("⚠️ All proxy attempts exhausted. Attempting direct unproxied connection to Binance...");
+            try {
+                const directOptions = {
+                    method: 'GET',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 5000
+                };
+                
+                const directRes = await fetch(targetUrl, directOptions);
+                if (directRes.ok) {
+                    const data = await directRes.json();
+                    if (Array.isArray(data) && data.length >= 50) {
+                        candles = data;
+                        console.log("✅ Direct connection saved the round!");
+                    }
+                } else {
+                    console.warn(`Direct connection also rejected with status: ${directRes.status}`);
+                }
+            } catch (e) {
+                console.error("Direct connection failed:", e.message);
             }
         }
 
         if (!candles) {
-            throw new Error("Proxy pool exhausted or all selection attempts timed out.");
+            throw new Error("Critical: Proxy pool and direct fallback both failed to return valid Binance data.");
         }
         
         const opens = candles.map(c => parseFloat(c));
