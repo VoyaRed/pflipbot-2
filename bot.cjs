@@ -440,7 +440,7 @@ async function generatePrediction(targetEpoch) {
         brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${currentPred}.`);
         
         const ThoughtProcess = brainText.join(" ");
-        let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
+        let numericConfidence = Math.min(92.0, 60 + (netScore * 2.5));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         let displayConf = finalConfidence;
 
