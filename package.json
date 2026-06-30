@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "bot.cjs",
   "dependencies": {
+    "ws": "^8.13.0"
     "@supabase/supabase-js": "^2.0.0",
     "ccxt": "^4.2.53",
     "ethers": "^5.7.2",
