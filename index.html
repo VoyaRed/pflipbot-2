@@ -427,11 +427,26 @@
         async function updateMarketVisualsFromDB() {
             const { data, error } = await supabaseClient.from('market_stats').select('*').eq('id', 1).maybeSingle(); 
             if (data && !error) {
-                const rsiEl = document.getElementById('rsi');
-                const macdEl = document.getElementById('macd');
-                if (macdEl && data.macd !== null && data.macd !== undefined) {
-                    let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
-                }      
+        const rsiEl = document.getElementById('rsi');
+        const macdEl = document.getElementById('macd');
+        
+        // Update MACD
+        if (macdEl && data.macd !== null && data.macd !== undefined) {
+            let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
+            
+            // 1. Display the actual number/text on the screen
+            macdEl.textContent = data.macd; 
+            
+            // 2. Apply the color you calculated to the element's style
+            macdEl.style.color = macdColor; 
+        }     
+        
+        // Update RSI
+        if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
+            // Display the RSI text on the screen
+            rsiEl.textContent = data.rsi;
+        }
+    }  
 
                 const thoughtEl = document.getElementById('bot-thoughts');
                 const timeEl = document.getElementById('thought-timestamp');
