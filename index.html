@@ -277,11 +277,11 @@
                             
                             <div class="stat-row" style="margin-top: 15px;">
                                 <span style="color: var(--subtext);">RSI:</span>
-                                <span id="live-rsi" style="font-weight: bold;">--</span>
+                                <span id="rsi" style="font-weight: bold;">--</span>
                             </div>
                             <div class="stat-row">
                                 <span style="color: var(--subtext);">MACD:</span>
-                                <span id="live-macd" style="font-weight: bold;">--</span>
+                                <span id="macd" style="font-weight: bold;">--</span>
                             </div>
                             
                             <div class="price-box">
@@ -428,8 +428,6 @@
             const { data, error } = await supabaseClient.from('market_stats').select('*').eq('id', 1).maybeSingle(); 
             if (data && !error) {
                 const rsiEl = document.getElementById('rsi');
-                if (rsiEl) rsiEl.innerText = data.rsi !== null ? data.rsi.toFixed(2) : "?";
-
                 const macdEl = document.getElementById('macd');
                 if (macdEl && data.macd !== null && data.macd !== undefined) {
                     let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
