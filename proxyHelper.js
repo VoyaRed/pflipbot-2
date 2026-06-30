@@ -65,6 +65,10 @@ function getRandomProxy() {
   const randomIndex = Math.floor(Math.random() * proxyList.length);
   const proxyUrl = proxyList[randomIndex];
 
+  if (proxyUrl.includes('443') || proxyUrl.includes('8443')) {
+      console.log("DEBUG: Testing an SSL-capable proxy:", proxyUrl);
+  }
+
   return {
     agent: new HttpsProxyAgent(proxyUrl),
     url: proxyUrl
