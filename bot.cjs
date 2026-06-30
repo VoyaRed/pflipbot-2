@@ -102,7 +102,7 @@ async function checkRound() {
                 .update({ 
                     current_pred: 'NONE', 
                     current_conf: 'Calculating...',
-                    thought_process: `Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...${lastAnalysis}`
+                    thought_process: `Just uhhh... waiting for the next epoch.. and then we can go from there! Yk what I mean!! ||  Waiting for initial 3-minute market settling...${lastAnalysis}`
                 })
                 .eq('id', 1);
             memoryStore[`cleared_${currentEpoch}`] = true;
@@ -124,12 +124,12 @@ async function checkRound() {
         if (!memoryStore[`best_${currentEpoch}`]) {
             console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback direction prediction.`);
             memoryStore[`best_${currentEpoch}`] = {
-                current_pred: "DOWN", // Default fallback direction
-                current_conf: "Failsafe Fallback",
+                current_pred: "SKIP", // Default fallback direction
+                current_conf: "binance trippin 1sec",
                 numeric: 50,
                 later_pred: "NONE",
                 later_conf: "0%",
-                rsi: 50,
+                rsi: 0,
                 macd: 0,
                 price: 0,
                 thought_process: "Emergency Fallback: Binance data retrieval timed out before lock."
