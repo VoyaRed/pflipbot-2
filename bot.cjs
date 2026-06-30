@@ -100,6 +100,9 @@ async function findFastestRPC() {
 let isInitialFetchDone = false;
 let binanceSleepUntil = 0; 
 
+let isInitialFetchDone = false;
+let binanceSleepUntil = 0; 
+
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
 
@@ -129,26 +132,43 @@ async function startBot() {
         runLoop();
     } catch (error) {
         if (error.message.includes('418') || error.message.includes('429')) {
-            // 1. Establish a default penalty fallback (e.g., 5 minutes) just in case headers are missing
-            let sleepDurationMs = 5 * 60 * 1000; 
+            let sleepDurationMs = 5 * 60 * 1000; // Default 5 min fallback
             let penaltySource = "Default Fallback";
 
-            // 2. Attempt to extract headers from the error object
-            // This covers Axios (error.response.headers) and CCXT (error.responseHeaders)
-            const headers = error.response?.headers || error.responseHeaders;
-            
-            if (headers) {
-                // Handle both Fetch API (.get) and raw objects ([])
-                const rawHeader = typeof headers.get === 'function' 
-                    ? headers.get('retry-after') || headers.get('Retry-After')
-                    : headers['retry-after'] || headers['Retry-After'];
-                    
-                if (rawHeader) {
-                    const retrySeconds = parseInt(rawHeader, 10);
-                    if (!isNaN(retrySeconds)) {
-                        // Binance sends Retry-After in seconds; convert to MS
-                        sleepDurationMs = retrySeconds * 1000;
-                        penaltySource = "Exact Binance Header";
+            // 1. Check for the explicit Unix timestamp in the Binance error message
+            // This matches the pattern "banned until 1782850259797" and extracts the numbers
+            const banMatch = error.message.match(/banned until (\d+)/);
+
+            if (banMatch && banMatch[1]) {
+                const banLiftTimestampMs = parseInt(banMatch[1], 10);
+                const bufferMs = 5000; // 5-second safety buffer
+                
+                // Calculate sleep duration based on the extracted timestamp
+                sleepDurationMs = (banLiftTimestampMs - Date.now()) + bufferMs;
+                penaltySource = "Binance Error Timestamp (+ 5s buffer)";
+
+                // Sanity check: If system clocks are out of sync or the timestamp is in the past, 
+                // revert to the default 5-minute fallback to prevent infinite rapid looping.
+                if (sleepDurationMs <= 0) {
+                    sleepDurationMs = 5 * 60 * 1000;
+                    penaltySource = "Default Fallback (Timestamp was in the past)";
+                }
+            } 
+            // 2. Fallback to header extraction if the explicit timestamp isn't found
+            else {
+                const headers = error.response?.headers || error.responseHeaders;
+                
+                if (headers) {
+                    const rawHeader = typeof headers.get === 'function' 
+                        ? headers.get('retry-after') || headers.get('Retry-After')
+                        : headers['retry-after'] || headers['Retry-After'];
+                        
+                    if (rawHeader) {
+                        const retrySeconds = parseInt(rawHeader, 10);
+                        if (!isNaN(retrySeconds)) {
+                            sleepDurationMs = retrySeconds * 1000;
+                            penaltySource = "Exact Binance Header";
+                        }
                     }
                 }
             }
