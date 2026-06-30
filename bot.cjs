@@ -1,4 +1,4 @@
-// bot.cjs - UpsideDownCake 24/7 Engine 🍰 (Hyper-Optimized 5m Scalping Edition)
+// bot.cjs - UpsideDownCake 24/7 Engine 🍰 (Hyper-Optimized 5m Scalper + Time-Machine Failover)
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
@@ -26,11 +26,16 @@ let provider, contract;
 let lastEpochChecked = 0;
 let memoryStore = {};
 let lastScrapeTime = 0;
-const SCRAPE_INTERVAL = 18000; // Increased responsiveness for 5m charts
+const SCRAPE_INTERVAL = 18000; 
 
 let localCandles = [];
 let isInitialFetchDone = false;
 let binanceSleepUntil = 0; 
+let isTestModeActive = false; 
+
+// --- TIME MACHINE VARIABLES ---
+let historicalTestSet = [];
+let testModePointer = 1000; 
 
 let consecutiveLoopErrors = 0; 
 let startBotErrorCount = 0;
@@ -44,6 +49,8 @@ function startCandleStream() {
     });
 
     ws.on('message', (data) => {
+        if (isTestModeActive) return; // Ignore live stream when time-traveling
+        
         const message = JSON.parse(data);
         const kline = message.k; 
 
@@ -52,13 +59,8 @@ function startCandleStream() {
         }
         
         const candle = [
-            kline.t,
-            parseFloat(kline.o),
-            parseFloat(kline.h),
-            parseFloat(kline.l),
-            parseFloat(kline.c),
-            parseFloat(kline.v),
-            parseFloat(kline.V || 0) 
+            kline.t, parseFloat(kline.o), parseFloat(kline.h), parseFloat(kline.l),
+            parseFloat(kline.c), parseFloat(kline.v), parseFloat(kline.V || 0) 
         ];
 
         if (localCandles.length > 0 && localCandles[localCandles.length - 1][0] === candle[0]) {
@@ -71,9 +73,30 @@ function startCandleStream() {
 
     ws.on('error', (err) => console.error("❌ WebSocket Error:", err));
     ws.on('close', () => {
-        console.log("🔌 WebSocket disconnected. Reconnecting in 5 seconds...");
-        setTimeout(startCandleStream, 5000);
+        if (!isTestModeActive) {
+            console.log("🔌 WebSocket disconnected. Reconnecting in 5 seconds...");
+            setTimeout(startCandleStream, 5000);
+        }
     });
+}
+
+// --- NEW: TIME MACHINE DATA LOADER ---
+async function initializeTimeMachine() {
+    try {
+        console.log("🌐 Booting Time Machine... Fetching 1500 historical testnet candles...");
+        const res = await fetch('https://testnet.binance.vision/api/v3/klines?symbol=BNBUSDT&interval=5m&limit=1500');
+        const data = await res.json();
+        
+        historicalTestSet = data.map(kline => [
+            kline[0], parseFloat(kline[1]), parseFloat(kline[2]), parseFloat(kline[3]), 
+            parseFloat(kline[4]), parseFloat(kline[5]), parseFloat(kline[9]) 
+        ]);
+        
+        testModePointer = 1000; // Start looking at the 1000th candle
+        console.log("⏳ Time Machine Ready. We have 500 future epochs known.");
+    } catch(e) {
+        console.error("Time Machine API fallback failed:", e);
+    }
 }
 
 async function findFastestRPC() {
@@ -89,22 +112,13 @@ async function findFastestRPC() {
             const c = new ethers.Contract(PREDICT_ADDR, ABI, p);
             await c.currentEpoch(); 
             return { provider: p, contract: c };
-        } catch (e) {
-            console.warn(`Node ${url} failed, trying next...`);
-        }
+        } catch (e) {}
     }
     throw new Error("All RPC nodes failed.");
 }
 
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
-
-    if (Date.now() < binanceSleepUntil) {
-        const remainingTime = Math.ceil((binanceSleepUntil - Date.now()) / 1000);
-        console.log(`💤 Bot is in Sleep Mode. Skipping initialization. Waking up in ${remainingTime}s...`);
-        setTimeout(startBot, 10000);
-        return;
-    }
 
     try {
         console.log("Loading Binance markets to prevent rate limits...");
@@ -153,9 +167,17 @@ async function startBot() {
 
             binanceSleepUntil = Date.now() + sleepDurationMs;
             const sleepMinutes = (sleepDurationMs / 1000 / 60).toFixed(2);
+            isTestModeActive = true; 
 
-            console.error(`🚨 Binance Ban/Rate Limit Detected! -> Source: ${penaltySource} -> Entering Sleep Mode for ${sleepMinutes} minutes.`);
-            setTimeout(startBot, sleepDurationMs);
+            console.error(`🚨 Binance Ban/Rate Limit Detected! -> Source: ${penaltySource} -> Activating Time Machine for ${sleepMinutes} minutes.`);
+            
+            // Connect to Time Machine DB and keep running loop alongside live contract
+            const fastest = await findFastestRPC();
+            provider = fastest.provider;
+            contract = fastest.contract;
+            await initializeTimeMachine();
+            runLoop(); 
+            
         } else {
             startBotErrorCount++;
             const fallbackDelayMs = Math.min(10000 * Math.pow(2, startBotErrorCount), 300000); 
@@ -167,6 +189,14 @@ async function startBot() {
 
 async function runLoop() {
     try {
+        if (isTestModeActive && Date.now() >= binanceSleepUntil) {
+            console.log("🌞 Rate limit lifted. Returning to present timeline...");
+            isTestModeActive = false;
+            localCandles = [];
+            startBot(); 
+            return;
+        }
+
         await checkRound();
         consecutiveLoopErrors = 0; 
         setTimeout(runLoop, 2000); 
@@ -194,6 +224,14 @@ async function checkRound() {
     if (secondsLeft > 102) {
         if (!memoryStore[`cleared_${currentEpoch}`]) {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
+            
+            // Advance Time Machine
+            if (isTestModeActive) {
+                testModePointer++; 
+                if (testModePointer >= historicalTestSet.length - 1) testModePointer = 1000; // Loop safety
+                console.log(`⏰ Time Machine advanced. Frame: ${testModePointer}/1500`);
+            }
+
             let lastAnalysis = "";
             const lastData = memoryStore[`best_${currentEpoch - 1}`];
 
@@ -203,6 +241,7 @@ async function checkRound() {
 
             await supabaseClient.from('market_stats').update({ 
                 current_pred: 'NONE', current_conf: 'Calculating...',
+                test_mode: isTestModeActive, 
                 thought_process: `Waiting for initial 3-minute market settling...${lastAnalysis}`
             }).eq('id', 1);
 
@@ -212,7 +251,6 @@ async function checkRound() {
 
     if (secondsLeft > 0 && secondsLeft <= 102 && !memoryStore[`locked_${currentEpoch}`]) {
         if (Date.now() - lastScrapeTime > SCRAPE_INTERVAL) {
-            console.log(`📡 Scanning... Epoch #${currentEpoch} locks in ${secondsLeft}s`);
             await generatePrediction(currentEpoch);
             lastScrapeTime = Date.now();
         }
@@ -220,14 +258,12 @@ async function checkRound() {
 
     if (secondsLeft <= 15 && secondsLeft > 0 && !memoryStore[`locked_${currentEpoch}`]) {
         if (!memoryStore[`best_${currentEpoch}`]) {
-            console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback.`);
             memoryStore[`best_${currentEpoch}`] = {
                 current_pred: "NONE", current_conf: "binance trippin 1sec", numeric: 50,
                 later_pred: "NONE", later_conf: "0%", rsi: 0, macd: 0, price: 0,
                 thought_process: "Emergency Fallback: Binance data retrieval timed out before lock."
             };
         }
-        console.log(`⏱️ Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
     }
 
@@ -250,20 +286,25 @@ async function updateMarketStats(rsi, currentMACD, currentClose, currentPred = "
         id: 1, rsi: rsi, macd: currentMACD, price: currentClose,
         current_pred: currentPred, current_conf: currentConf,
         later_pred: laterPred, later_conf: laterConf,
+        test_mode: isTestModeActive,
         thought_process: thoughtProcess, updated_at: new Date().toISOString() 
     }]);
+
     if (error) console.error("Error updating stats:", error);
 }
 
+// *** ORIGINAL CALCULATION LOGIC ***
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
-        let candles = localCandles;
-        
-        if (!candles || candles.length < 50) {
-            console.log("⚠️ Waiting for WebSocket to populate local candles... skipping prediction this tick.");
-            return; 
+
+        // TIME MACHINE DATA OVERRIDE
+        if (isTestModeActive && historicalTestSet.length > 0) {
+            localCandles = historicalTestSet.slice(testModePointer - 1000, testModePointer);
         }
+
+        let candles = localCandles;
+        if (!candles || candles.length < 50) return; 
 
         const opens = candles.map(c => parseFloat(c[1]));
         const highs = candles.map(c => parseFloat(c[2]));
@@ -273,147 +314,107 @@ async function generatePrediction(targetEpoch) {
         const takerBuyVols = candles.map(c => c[6] !== undefined ? parseFloat(c[6]) : (parseFloat(c[5]) / 2));
         const currentClose = closes[closes.length - 1];
 
-        // --- UPGRADE 1: INTRA-BAR VOLATILITY METRIC (ATR 14) ---
         let tr = [];
         for (let i = 1; i < closes.length; i++) {
-            tr.push(Math.max(
-                highs[i] - lows[i],
-                Math.abs(highs[i] - closes[i - 1]),
-                Math.abs(lows[i] - closes[i - 1])
-            ));
+            tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1])));
         }
         let atr = tr.slice(tr.length - 14).reduce((a, b) => a + b, 0) / 14;
 
-        // --- 2. INSTANT VWAP ENGINE (24h Window) ---
-        let cumVol = 0;
-        let cumTypPriceVol = 0;
-        const vwapLookback = Math.max(0, closes.length - 288); 
+        let cumVol = 0; let cumTypPriceVol = 0;
+        const vwapLookback = Math.max(0, closes.length - 288);
         for(let i = vwapLookback; i < closes.length; i++) {
             let typPrice = (highs[i] + lows[i] + closes[i]) / 3;
-            cumVol += volumes[i];
-            cumTypPriceVol += typPrice * volumes[i];
+            cumVol += volumes[i]; cumTypPriceVol += typPrice * volumes[i];
         }
         const vwap = cumTypPriceVol / cumVol;
 
-        // --- 3. RESPONSIVE INTRA- candle MOMENTUM SYSTEM ---
         let recentUps = 0, recentDowns = 0;
         for(let i = closes.length - 3; i < closes.length; i++) {
-            if(closes[i] > opens[i]) recentUps++;
-            else if(closes[i] < opens[i]) recentDowns++;
+            if(closes[i] > opens[i]) recentUps++; else if(closes[i] < opens[i]) recentDowns++;
         }
 
-        // --- 4. RSI SMOOTHING ---
         let gains = [], losses = [];
         for (let i = 1; i < closes.length; i++) {
             let diff = closes[i] - closes[i - 1];
-            gains.push(diff > 0 ? diff : 0);
-            losses.push(diff < 0 ? Math.abs(diff) : 0);
+            gains.push(diff > 0 ? diff : 0); losses.push(diff < 0 ? Math.abs(diff) : 0);
         }
         let avgGain = gains.slice(gains.length - 14).reduce((a, b) => a + b, 0) / 14;
         let avgLoss = losses.slice(losses.length - 14).reduce((a, b) => a + b, 0) / 14;
         let rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss)));
 
-        // --- 5. LAGGING INDICATORS (FOR FRONTEND BACKWARD COMPATIBILITY) ---
         const calculateEMAArray = (data, period) => {
-            const k = 2 / (period + 1);
-            let emaArray = [data[0]]; 
-            for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
-            return emaArray;
+            const k = 2 / (period + 1); let emaArray = [data[0]]; 
+            for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k))); return emaArray;
         };
         const currentMACD = calculateEMAArray(closes, 12)[closes.length - 1] - calculateEMAArray(closes, 26)[closes.length - 1];
 
-        // --- UPGRADE 2: MULTI-CANDLE VOLUME DELTA SCALE ---
-        let multiCandleDelta = 0;
-        let totalWindowVol = 0;
+        let multiCandleDelta = 0; let totalWindowVol = 0;
         for(let i = closes.length - 3; i < closes.length; i++) {
-            let cv = volumes[i];
-            let ctb = takerBuyVols[i];
-            let cts = cv - ctb;
-            multiCandleDelta += (ctb - cts);
-            totalWindowVol += cv;
+            let cv = volumes[i]; let ctb = takerBuyVols[i]; let cts = cv - ctb;
+            multiCandleDelta += (ctb - cts); totalWindowVol += cv;
         }
         const deltaPercentage = (multiCandleDelta / totalWindowVol) * 100;
 
-        // --- 6. AGGREGATE SCORING ENGINE ---
-        let upScore = 0, downScore = 0;
-        let brainText = [];
+        let upScore = 0, downScore = 0; let brainText = [];
+        
+        if (isTestModeActive) {
+            brainText.push("🧪 **TIME MACHINE ACTIVE**: Utilizing historical market vectors to bypass rate limits.");
+        }
 
-        // High Probability Structure (VWAP Positioning)
         const distFromVwap = ((currentClose - vwap) / vwap) * 100;
         if (currentClose > vwap) {
-            upScore += 3.0;
-            brainText.push(`Price is securely above institutional VWAP (${vwap.toFixed(2)}). Structure is bullish.`);
-            if (distFromVwap > 1.2) { 
-                downScore += 1.5;
-                brainText.push("Volatility expansion away from structural VWAP implies micro reversion risk.");
-            }
+            upScore += 3.0; brainText.push(`Price is securely above institutional VWAP (${vwap.toFixed(2)}). Structure is bullish.`);
+            if (distFromVwap > 1.2) { downScore += 1.5; brainText.push("Volatility expansion away from structural VWAP implies micro reversion risk."); }
         } else {
-            downScore += 3.0;
-            brainText.push(`Price is pinned under structural VWAP (${vwap.toFixed(2)}). Bearish grip active.`);
-            if (distFromVwap < -1.2) {
-                upScore += 1.5;
-                brainText.push("Extended micro-expansion below structural baseline suggests dynamic bounce risk.");
-            }
+            downScore += 3.0; brainText.push(`Price is pinned under structural VWAP (${vwap.toFixed(2)}). Bearish grip active.`);
+            if (distFromVwap < -1.2) { upScore += 1.5; brainText.push("Extended micro-expansion below structural baseline suggests dynamic bounce risk."); }
         }
 
-        // Multi-Candle Aggressive Order Flow
-        if (deltaPercentage > 8.0) {
-            upScore += 3.5;
-            brainText.push(`Order Flow Audit: Bulls dominating execution tape (+${deltaPercentage.toFixed(1)}% multi-candle volume delta balance).`);
-        } else if (deltaPercentage < -8.0) {
-            downScore += 3.5;
-            brainText.push(`Order Flow Audit: Bears flooding ask lines (-${deltaPercentage.toFixed(1)}% multi-candle volume delta balance).`);
-        } else {
-            brainText.push("Volume distribution is balanced. Dynamic directional divergence is minimal.");
-        }
+        if (deltaPercentage > 8.0) { upScore += 3.5; brainText.push(`Order Flow Audit: Bulls dominating execution tape (+${deltaPercentage.toFixed(1)}% delta).`); } 
+        else if (deltaPercentage < -8.0) { downScore += 3.5; brainText.push(`Order Flow Audit: Bears flooding ask lines (-${deltaPercentage.toFixed(1)}% delta).`); } 
 
-        // Intra-bar Velocity Confirmation
         if (recentUps >= 2 && currentClose > opens[opens.length - 1]) upScore += 1.5;
         if (recentDowns >= 2 && currentClose < opens[opens.length - 1]) downScore += 1.5;
-
-        // Dynamic Mean Reversion Threshold Filter (ATR Bounds Adjustment)
+        
         const pointSpread = Math.abs(currentClose - opens[opens.length - 1]);
-        if (pointSpread < (atr * 0.25)) {
-            upScore -= 1.0;
-            downScore -= 1.0;
-            brainText.push("Volatility Compression Warning: Local compression under safe ATR scaling parameters.");
-        }
+        if (pointSpread < (atr * 0.25)) { upScore -= 1.0; downScore -= 1.0; brainText.push("Volatility Compression Warning: Local compression under safe ATR scaling parameters."); }
 
-        // Overbought/Oversold Filter Mechanics
         if (rsi > 78) { upScore -= 2.0; downScore += 1.0; brainText.push(`Velocity Threshold Warning: RSI Overextended (${rsi.toFixed(1)}).`); }
         if (rsi < 22) { downScore -= 2.0; upScore += 1.0; brainText.push(`Velocity Threshold Warning: RSI Compressed (${rsi.toFixed(1)}).`); }
 
-        // --- UPGRADE 3: ADAPTIVE SKIP ENGINES FOR CONVOLUTED 5M MARKETS ---
-        let currentPred = "NONE";
-        let displayConf = "0.0%";
-        let numericConfidence = 50;
+        let currentPred = "NONE"; let displayConf = "0.0%"; let numericConfidence = 50;
         let netScore = Math.abs(upScore - downScore);
-
-        // Strict Execution Safeguards: If indicators are completely tangled or directional conviction is low, yield a SKIP strategy.
+        
         if (netScore < 2.5 || (rsi > 42 && rsi < 58 && Math.abs(deltaPercentage) < 5.0)) {
-            currentPred = "SKIP";
-            const tacticalBias = upScore >= downScore ? "Try: UP" : "Try: DOWN";
-            displayConf = tacticalBias; 
-            numericConfidence = 49.0; 
-            brainText.push(`Execution Strategy: Low Conviction Scalp conditions identified. Triggering automated safety SKIP to insulate capital.`);
+            currentPred = "SKIP"; displayConf = upScore >= downScore ? "Try: UP" : "Try: DOWN"; numericConfidence = 49.0;
         } else {
-            currentPred = (upScore > downScore) ? "UP" : "DOWN";
-            numericConfidence = Math.min(88.0, 52 + (netScore * 4.5));
+            currentPred = (upScore > downScore) ? "UP" : "DOWN"; numericConfidence = Math.min(88.0, 52 + (netScore * 4.5));
             displayConf = numericConfidence.toFixed(1) + "%";
-            brainText.push(`Directional Confirmation: Strategy matrix selects execution path [${currentPred}].`);
+        }
+
+        // --- TIME MACHINE FUTURE INSIGHT LOGIC ---
+        let laterPred = currentPred === "UP" ? "DOWN" : "UP";
+        let laterMajorityProb = (50 + (netScore * 2.0)).toFixed(1) + "%";
+        let futurePrice = 0;
+        
+        if (isTestModeActive && historicalTestSet[testModePointer]) {
+            // Peek at the very next candle in our local array to see the absolute future!
+            futurePrice = historicalTestSet[testModePointer][4];
+            let actualFutureResult = futurePrice > currentClose ? "UP" : "DOWN";
+            let fakeOutCome = currentPred === actualFutureResult ? "WIN" : "LOSS";
+            
+            brainText.push(`\n\n🔮 **KNOWN OUTCOME**: The close price will be exactly $${futurePrice.toFixed(4)}. Current vector guarantees a ${fakeOutCome}!`);
+            
+            // Sneak the future data into laterMajorityProb so the UI can rip it out and display it over the Oracle Price
+            laterMajorityProb = `$${futurePrice.toFixed(4)} (Bot ${fakeOutCome})`;
         }
 
         const ThoughtProcess = brainText.join(" ");
-        
-        let laterPred = currentPred === "UP" ? "DOWN" : "UP";
-        if (currentPred === "SKIP") laterPred = upScore >= downScore ? "UP" : "DOWN";
-        let laterMajorityProb = (50 + (netScore * 2.0)).toFixed(1) + "%";
 
-        console.log(`🔥 Scalper Metrics Update! Strategy: ${currentPred} | Confidence Score: ${displayConf}`);
-        
         memoryStore[`best_${targetEpoch}`] = {
             current_pred: currentPred, current_conf: displayConf, numeric: numericConfidence,
-            later_pred: laterPred, later_conf: laterMajorityProb, rsi: rsi, macd: currentMACD, price: currentClose, thought_process: ThoughtProcess
+            later_pred: laterPred, later_conf: laterMajorityProb, rsi: rsi, macd: currentMACD, 
+            price: currentClose, futurePrice: futurePrice, thought_process: ThoughtProcess
         };
 
         await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
@@ -427,13 +428,11 @@ async function lockInPrediction(targetEpoch) {
     if (!bestData) return;
     
     memoryStore[`locked_${targetEpoch}`] = true;
-    console.log(`\n🔒 ROUND LOCK ALERT! Standardizing predictive edge for Epoch #${targetEpoch}: ${bestData.current_pred} (${bestData.current_conf})`);
-    
-    if (bestData.numeric >= 76.0 && bestData.current_pred !== "SKIP") {
+
+    if (bestData.numeric >= 76.0 && bestData.current_pred !== "SKIP" && !isTestModeActive) {
         const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
         fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username: "Cake Alert Bot 🍰",
                 content: `🚨 **High Conviction 5m Signal** 🚨\nEpoch: #${targetEpoch}\nTarget Path: **${bestData.current_pred}**\nEngine Conviction: **${bestData.current_conf}**`
@@ -449,7 +448,7 @@ async function lockInPrediction(targetEpoch) {
         is_locked: true,
         thought_process: bestData.thought_process 
     }], { onConflict: 'epoch_id' });
-    
+
     if (error) console.error("❌ Early Supabase Insert Error:", error);
     await updateMarketStats(bestData.rsi, bestData.macd, bestData.price, "NONE", "Calculating...", bestData.later_pred, bestData.later_conf, bestData.thought_process);
 }
@@ -457,48 +456,50 @@ async function lockInPrediction(targetEpoch) {
 async function verifyResult(epochToCheck) {
     try {
         const round = await contract.rounds(epochToCheck);
-        if (!round.oracleCalled) return; 
-
-        const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
-        const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
-        
-        let actualResult;
-        if (closePrice === lockPrice) actualResult = "TIE";
-        else actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
-        
         const { data, error: fetchError } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single();
-        
-        if (fetchError || !data) return;
-        if (data.result !== 'PENDING') return;
-        
-        let resultStatus;
-        if (actualResult === "TIE") resultStatus = "TIE";
-        else if (data.predicted_side === "SKIP") resultStatus = "SKIP/" + actualResult;
-        else resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
+        if (fetchError || !data || data.result !== 'PENDING') return;
 
-        console.log(`\n⚖️ [Epoch ${epochToCheck}] Round Complete. Final Settlement Status: ${resultStatus}`);
-        
-        if (resultStatus === "LOSS" && data.thought_process) {
-            console.log(`\n--- 🕵️ ERROR BREAKDOWN AUDIT LOG [Epoch ${epochToCheck}] ---`);
-            console.log(`Failed Assessment: ${data.predicted_side} | Reality Print: ${actualResult}`);
-            console.log(`Context Trace: ${data.thought_process}`);
-            console.log(`----------------------------------------\n`);
+        let actualResult;
+        let resultStatus;
+
+        // --- TIME MACHINE VERIFICATION HIJACK ---
+        // If we test with historical data against a live contract, it will record fake losses on the real ledger.
+        // We bypass the smart contract Oracle here and use the future price we grabbed out of our time machine array.
+        if (isTestModeActive) {
+            const mockData = memoryStore[`best_${epochToCheck}`];
+            if (!mockData) return;
+            
+            actualResult = mockData.futurePrice > mockData.price ? "UP" : "DOWN";
+            resultStatus = data.predicted_side === "SKIP" ? `SKIP/${actualResult}` : (data.predicted_side === actualResult ? "WIN" : "LOSS");
+            
+            // Prepend TEST- so the UI knows not to mix this into the real live Win Rate calculations
+            resultStatus = `TEST-${resultStatus}`; 
+            console.log(`\n⚖️ [Epoch ${epochToCheck}] TIME MACHINE SETTLED. Simulated Result: ${resultStatus}`);
+        } else {
+            // NORMAL LIVE VERIFICATION
+            if (!round.oracleCalled) return; 
+            const lockPrice = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
+            const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
+            
+            if (closePrice === lockPrice) actualResult = "TIE";
+            else actualResult = closePrice > lockPrice ? "UP" : "DOWN";
+
+            if (actualResult === "TIE") resultStatus = "TIE";
+            else if (data.predicted_side === "SKIP") resultStatus = "SKIP/" + actualResult;
+            else resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
+            
+            console.log(`\n⚖️ [Epoch ${epochToCheck}] Round Complete. Final Settlement Status: ${resultStatus}`);
         }
 
-        const { error: updateError } = await supabaseClient.from('prediction_logs').update({ result: resultStatus }).eq('epoch_id', epochToCheck);
-        if (updateError) { console.error(`❌ Supabase Update Error:`, updateError.message); return; }
+        await supabaseClient.from('prediction_logs').update({ result: resultStatus }).eq('epoch_id', epochToCheck);
 
+        // Standard Console Analytics
         const { data: recentLogs } = await supabaseClient.from('prediction_logs').select('result, confidence').in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN']).order('epoch_id', { ascending: false }).limit(15);
         if (recentLogs && recentLogs.length > 0) {
             const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-            const trendLogs = recentLogs.filter(l => {
-                const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
-                return match ? parseFloat(match[1]) >= 55.0 : false;
-            });
+            const trendLogs = recentLogs.filter(l => { const match = l.confidence.match(/(\d+(?:\.\d+)?)/); return match ? parseFloat(match[1]) >= 55.0 : false; });
             const trendWins = trendLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-
             console.log(`📈 Mixed Win Engine Rate: ${((mixedWins / recentLogs.length) * 100).toFixed(1)}%`);
-            console.log(`🚀 Dedicated Trend Setup Win Engine Rate: ${trendLogs.length > 0 ? ((trendWins / trendLogs.length) * 100).toFixed(1) : "0.0"}%`);
         }
     } catch(e) { 
         console.error("Result Verification Failed:", e);
