@@ -1,50 +1,96 @@
-const fs = require('fs');
-const path = require('path');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-// Function to load and parse proxies from proxies.txt
-function loadProxies() {
-  try {
-    const filePath = path.resolve(process.cwd(), 'proxies.txt');
-    
-    // Read file and split by newlines, filtering out empty lines or comments
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    const proxies = fileContent
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#'));
+// The 4 public, auto-updating free proxy lists
+const PROXY_SOURCES = [
+  'https://raw.githubusercontent.com/proxyscrape/free-proxy-list/main/proxies/protocols/http/data.txt',
+  'https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt',
+  'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
+  'https://raw.githubusercontent.com/VPSLabCloud/VPSLab-Free-Proxy-List/main/http_ssl.txt'
+];
 
-    if (proxies.length === 0) {
-      throw new Error("Proxy list is empty.");
-    }
-    
-    return proxies;
-  } catch (error) {
-    console.error("Failed to load proxies.txt. Falling back to direct connection:", error.message);
-    return [];
-  }
-}
-
-// Keep the proxy list in memory so you don't read the disk on every request
-const proxyList = loadProxies();
+// In-memory array to store current functional proxies
+let proxyList = [];
 
 /**
- * Selects a random proxy and returns an HttpsProxyAgent instance.
- * Returns null if no proxies are available, allowing a direct connection fallback.
+ * Fetches proxies from all 4 sources simultaneously, normalizes them, and filters duplicates.
  */
-function getRandomProxyAgent() {
-  if (proxyList.length === 0) return null;
+async function refreshProxyPool() {
+  console.log("🔄 Fetching fresh proxies from all sources...");
+  const uniqueProxies = new Set();
 
-  // Pick a random index
+  // Fetch all sources concurrently
+  const requests = PROXY_SOURCES.map(async (url) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return [];
+      const text = await response.text();
+      return text.split('\n');
+    } catch (err) {
+      console.warn(`⚠️ Failed to fetch proxies from source: ${url}`);
+      return [];
+    }
+  });
+
+  const results = await Promise.all(requests);
+
+  // Clean and parse the strings
+  for (const lines of results) {
+    for (let line of lines) {
+      line = line.trim();
+      // Skip empty lines or comments
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+      // Ensure the proxy string contains a protocol prefix
+      if (!line.startsWith('http://') && !line.startsWith('https://')) {
+        line = `http://${line}`;
+      }
+
+      uniqueProxies.add(line);
+    }
+  }
+
+  proxyList = Array.from(uniqueProxies);
+  console.log(`✅ Proxy pool refreshed. Loaded ${proxyList.length} unique proxies.`);
+}
+
+/**
+ * Selects a random proxy from the active pool and tracks its URL string.
+ * Returns { agent, url } or { agent: null, url: null } if the pool is dry.
+ */
+function getRandomProxy() {
+  if (proxyList.length === 0) {
+    return { agent: null, url: null };
+  }
+
   const randomIndex = Math.floor(Math.random() * proxyList.length);
   const proxyUrl = proxyList[randomIndex];
 
-  console.log(`Routing request through proxy: ${proxyUrl}`);
-
-  return new HttpsProxyAgent(proxyUrl);
+  return {
+    agent: new HttpsProxyAgent(proxyUrl),
+    url: proxyUrl
+  };
 }
 
-// Export using CommonJS syntax
+/**
+ * Removes a bad or timed-out proxy from the pool so the bot avoids reusing it.
+ */
+function banProxy(proxyUrl) {
+  if (!proxyUrl) return;
+  const initialLength = proxyList.length;
+  proxyList = proxyList.filter(url => url !== proxyUrl);
+  
+  if (proxyList.length < initialLength) {
+    console.log(`🚫 Banned dead proxy: ${proxyUrl} | Remaining in pool: ${proxyList.length}`);
+  }
+
+  // Auto-refresh the pool if it drops below a threshold safety margin
+  if (proxyList.length < 10) {
+    refreshProxyPool().catch(err => console.error("Failed to auto-refresh pool:", err));
+  }
+}
+
 module.exports = {
-  getRandomProxyAgent
+  refreshProxyPool,
+  getRandomProxy,
+  banProxy
 };
