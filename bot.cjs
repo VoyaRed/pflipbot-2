@@ -116,8 +116,11 @@ async function startBot() {
         console.log("✅ Connected to BSC successfully.");
         runLoop();
     } catch (error) {
-        console.error("❌ Initialization failed, retrying in 10s...", error);
-        setTimeout(startBot, 10000);
+        // If we see a 418, we know we are BANNED. 
+        // We should wait significantly longer (e.g., 60 seconds) before trying again.
+        const waitTime = error.message.includes('418') ? 60000 : 10000;
+        console.error(`❌ Initialization failed (Error: ${error.message}). Retrying in ${waitTime/1000}s...`);
+        setTimeout(startBot, waitTime);
     }
 }
 
