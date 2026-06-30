@@ -302,12 +302,23 @@ async function generatePrediction(targetEpoch) {
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         
-        // Parse Taker Buy Volume. If missing (from REST fallback), estimate as 50% of total volume
+        // Parse Taker Buy Volume. If missing, estimate as 50% of total volume.
         const takerBuyVols = candles.map(c => c[6] !== undefined ? parseFloat(c[6]) : (parseFloat(c[5]) / 2));
-        
         const currentClose = closes[closes.length - 1];
 
-        // RSI Calculations
+        // --- 1. VWAP CALCULATION (Crucial for 5m Charts) ---
+        let cumVol = 0;
+        let cumTypPriceVol = 0;
+        // Calculate VWAP over the last 24 hours (approx 288 5m candles)
+        const vwapLookback = Math.max(0, closes.length - 288); 
+        for(let i = vwapLookback; i < closes.length; i++) {
+            let typPrice = (highs[i] + lows[i] + closes[i]) / 3;
+            cumVol += volumes[i];
+            cumTypPriceVol += typPrice * volumes[i];
+        }
+        const vwap = cumTypPriceVol / cumVol;
+
+        // --- 2. RSI CALCULATIONS (Maintained for frontend display & thresholds) ---
         let gains = [], losses = [];
         for (let i = 1; i < closes.length; i++) {
             let diff = closes[i] - closes[i - 1];
@@ -319,11 +330,10 @@ async function generatePrediction(targetEpoch) {
         let avgGain = gains.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         let avgLoss = losses.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         rsiHistory.push(avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss))));
-
+        
         for (let i = 14; i < gains.length; i++) {
             avgGain = ((avgGain * 13) + gains[i]) / 14;
             avgLoss = ((avgLoss * 13) + losses[i]) / 14;
-            
             let currentRsi = 100;
             if (avgLoss !== 0) currentRsi = 100 - (100 / (1 + (avgGain / avgLoss)));
             else if (avgGain === 0) currentRsi = 0;
@@ -331,25 +341,8 @@ async function generatePrediction(targetEpoch) {
         }
 
         let rsi = rsiHistory[rsiHistory.length - 1];
-        let previousRSI_3_candles_ago = rsiHistory[rsiHistory.length - 4] || rsi;
-        let rsiSlope = (rsi - previousRSI_3_candles_ago) / 3;
-        
-        // UPGRADE 2: Dynamic RSI Thresholds
-        const rsiLookbackLength = Math.min(50, rsiHistory.length);
-        const rsiSMA = rsiHistory.slice(-rsiLookbackLength).reduce((a, b) => a + b, 0) / rsiLookbackLength;
-        const dynamicOverbought = Math.max(65, rsiSMA + 12);
-        const dynamicOversold = Math.min(35, rsiSMA - 12);
 
-        // Bollinger Bands
-        const bbPeriod = 20;
-        const bbSlice = closes.slice(-bbPeriod);
-        const sma = bbSlice.reduce((a, b) => a + b, 0) / bbPeriod;
-        const variance = bbSlice.reduce((acc, val) => acc + Math.pow(val - sma, 2), 0) / bbPeriod;
-        const stdDev = Math.sqrt(variance);
-        const upperBB = sma + (stdDev * 2);
-        const lowerBB = sma - (stdDev * 2);
-
-        // EMAs & MACD
+        // --- 3. EMAs & MACD (Maintained so the UI frontend doesn't break) ---
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
             let emaArray = [data[0]]; 
@@ -365,22 +358,18 @@ async function generatePrediction(targetEpoch) {
         const signalLineArray = calculateEMAArray(macdLineArray, 9);
 
         const currentMACD = macdLineArray[macdLineArray.length - 1];
-        const currentSignal = signalLineArray[signalLineArray.length - 1];
-        const currentHist = currentMACD - currentSignal;
-        const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
 
-        // UPGRADE 3: Volume Delta Analysis
+        // --- 4. VOLUME DELTA ANALYSIS ---
         const currentVol = volumes[volumes.length - 1];
         const currentTakerBuy = takerBuyVols[takerBuyVols.length - 1];
         const currentTakerSell = currentVol - currentTakerBuy;
-        const volDelta = currentTakerBuy - currentTakerSell; // Positive = Bulls hit the ask, Negative = Bears hit the bid
+        const volDelta = currentTakerBuy - currentTakerSell;
 
-        // Historical Trends
+        // --- 5. HISTORICAL TRENDS (Maintained to gauge contract momentum) ---
         let recentUps = 0, recentDowns = 0;
         const roundPromises = [];
         for(let i=1; i<=5; i++) roundPromises.push(contract.rounds(targetEpoch - i).catch(() => null));
         const pastRounds = await Promise.all(roundPromises);
-        
         pastRounds.forEach(r => {
             if (r && r.oracleCalled) {
                 const lp = parseFloat(ethers.utils.formatUnits(r.lockPrice, 8));
@@ -389,148 +378,88 @@ async function generatePrediction(targetEpoch) {
             }
         });
 
-        // --- CATEGORY SCORING ---
+        // --- 6. CATEGORY SCORING (Merged System) ---
         let upScore = 0, downScore = 0;
         let brainText = []; 
-        let historyScore = { up: 0, down: 0 }, trendScore = { up: 0, down: 0 }, volScore = { up: 0, down: 0 }, patternScore = { up: 0, down: 0 };
+        let vwapScore = { up: 0, down: 0 }, volScore = { up: 0, down: 0 }, historyScore = { up: 0, down: 0 };
 
-        // Dynamic RSI Penalties
-        if (rsiSlope > 0.5) {
-            if (rsi > dynamicOverbought) {
-                volScore.down += 2.5;
-                brainText.push(`Warning: RSI (${rsi.toFixed(1)}) exceeded dynamic ceiling (${dynamicOverbought.toFixed(1)}). Anticipating a bearish exhaustion reversal.`);
-            } else {
-                trendScore.up += 1.0;
-                brainText.push("RSI is aggressively rising; momentum is strong.");
+        // A. VWAP Structure (Is price above or below the institutional average?)
+        const distFromVwap = ((currentClose - vwap) / vwap) * 100;
+        if (currentClose > vwap) {
+            vwapScore.up += 2.0;
+            brainText.push(`Price is holding above VWAP (${vwap.toFixed(2)}), structural trend is bullish.`);
+            if (distFromVwap > 1.5) { // Mean reversion trigger
+                vwapScore.down += 1.5;
+                brainText.push("Price is overextended from VWAP, risk of mean-reversion pullback.");
             }
-        }
-        if (rsiSlope < -0.5) {
-            if (rsi < dynamicOversold) {
-                volScore.up += 2.5;
-                brainText.push(`Warning: RSI (${rsi.toFixed(1)}) crashed through dynamic floor (${dynamicOversold.toFixed(1)}). Anticipating a bullish exhaustion reversal.`);
-            } else {
-                trendScore.down += 1.0;
-                brainText.push("RSI is skyrocketing downward; bearish momentum is accelerating.");
-            }
-        }
-
-        // Volume Delta Scoring (Who is controlling the tape)
-        if (volDelta > 0 && volDelta > (currentVol * 0.15)) {
-            volScore.up += 1.5;
-            brainText.push("Order Flow Analysis: Strong aggregate Buy Delta. Bulls are actively lifting the ask.");
-        } else if (volDelta < 0 && Math.abs(volDelta) > (currentVol * 0.15)) {
-            volScore.down += 1.5;
-            brainText.push("Order Flow Analysis: Strong aggregate Sell Delta. Bears are actively hitting the bid.");
-        }
-
-        // History
-        if (recentUps >= 3) { historyScore.up += 1.0; brainText.push("Recent historical rounds lean bullish."); }
-        if (recentUps === 5) historyScore.up += 1.5;
-        if (recentDowns >= 3) { historyScore.down += 1.0; brainText.push("Recent historical rounds lean bearish."); }
-        if (recentDowns === 5) historyScore.down += 1.5;
-
-        // Pattern Variables
-        const prevOpen = opens[opens.length - 2];
-        const prevClose = closes[closes.length - 2];
-        const prevHigh = highs[highs.length - 2];
-        const prevLow = lows[lows.length - 2];
-        
-        const upperWick = prevHigh - Math.max(prevOpen, prevClose);
-        const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
-        const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
-        const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
-
-        let trSum = 0;
-        for (let i = closes.length - 14; i < closes.length; i++) {
-            const highLow = highs[i] - lows[i];
-            const highClose = Math.abs(highs[i] - closes[i-1]);
-            const lowClose = Math.abs(lows[i] - closes[i-1]);
-            trSum += Math.max(highLow, highClose, lowClose);
-        }
-        const atrPercentage = ((trSum / 14) / currentClose) * 100;
-        let bbWidth = (upperBB - lowerBB) / sma;
-        let isChoppy = bbWidth < 0.0015;
-
-        if ((atrPercentage < 0.08 || isChoppy) && ema9 > ema21) { 
-            volScore.up += 2.5;
-            brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
-            if (currentClose < sma) {
-                volScore.up += 2.5;
-                brainText.push("Price is lagging beneath the Moving Average, forcing a counter-structural upcall.");
-            } else if (currentClose > sma) {
-                volScore.down += 2.5;
-                brainText.push("Price is floating above the Moving Average, forcing a counter-structural downcall.");
-            }
-        } else if ((atrPercentage < 0.08 || isChoppy) && ema9 < ema21) {
-            volScore.down += 2.5;
-            brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
-            if (currentClose > sma) volScore.down += 2.5;
         } else {
-            brainText.push("Market is showing structural momentum, engaging Trend analysis.");
-            if (ema9 > ema21) trendScore.up += 1.0;
-            if (ema9 < ema21) trendScore.down += 1.0; 
-            
-            if (currentMACD > currentSignal && currentHist > prevHist) trendScore.up += 3.0;
-            if (currentMACD < currentSignal && currentHist < prevHist) trendScore.down += 3.0;
-            
-            if (roc3 > 0.15) trendScore.up += 3.0;
-            if (roc3 < -0.15) trendScore.down += 3.0; 
-
-            // Candlesticks
-            if (upperWick > bodySize * 2) { 
-                patternScore.down += 3.5;
-                brainText.push("Spotted a long upper wick on the previous candle, predicting supply overhead.");
+            vwapScore.down += 2.0;
+            brainText.push(`Price is rejected below VWAP (${vwap.toFixed(2)}), structural trend is bearish.`);
+            if (distFromVwap < -1.5) {
+                vwapScore.up += 1.5;
+                brainText.push("Price is heavily dragged below VWAP, risk of bounce.");
             }
-            if (lowerWick > bodySize * 2) { 
-                patternScore.up += 3.5;
-                brainText.push("Spotted a long lower wick on the previous candle, predicting clear demand protection.");
-            }
-
-            // BB Extreme Overrides
-            if (currentClose > upperBB && rsi > 72) volScore.down += 4.5;
-            if (currentClose < lowerBB && rsi < 28) volScore.up += 4.5;
         }
 
-        // Caps
-        historyScore.up = Math.min(historyScore.up, 2.5); historyScore.down = Math.min(historyScore.down, 2.5);
-        trendScore.up = Math.min(trendScore.up, 4.5); trendScore.down = Math.min(trendScore.down, 4.5);
-        volScore.up = Math.min(volScore.up, 5.0); volScore.down = Math.min(volScore.down, 5.0);
-        patternScore.up = Math.min(patternScore.up, 3.5); patternScore.down = Math.min(patternScore.down, 3.5);
+        // B. Order Flow / Volume Delta (Who is aggressively hitting the tape?)
+        if (volDelta > (currentVol * 0.10)) { // Bulls control 10%+ of the net volume
+            volScore.up += 2.5;
+            brainText.push("Order Flow: Bulls are actively lifting the ask. Demand is aggressive.");
+        } else if (volDelta < -(currentVol * 0.10)) {
+            volScore.down += 2.5;
+            brainText.push("Order Flow: Bears are actively hitting the bid. Supply is heavy.");
+        } else {
+            brainText.push("Order Flow: Neutral volume delta. Market is currently ranging.");
+        }
 
-        upScore = historyScore.up + trendScore.up + volScore.up + patternScore.up;
-        downScore = historyScore.down + trendScore.down + volScore.down + patternScore.down;
+        // C. RSI as a Filter
+        if (rsi > 75 && volDelta < 0) {
+            volScore.down += 2.0;
+            brainText.push(`RSI is overbought (${rsi.toFixed(1)}) AND bears are stepping in. Reversal likely.`);
+        } else if (rsi < 25 && volDelta > 0) {
+            volScore.up += 2.0;
+            brainText.push(`RSI is oversold (${rsi.toFixed(1)}) AND bulls are buying the dip. Bounce expected.`);
+        }
+
+        // D. History (Soft weight to maintain contract specific bias)
+        if (recentUps >= 3) { historyScore.up += 1.0; }
+        if (recentDowns >= 3) { historyScore.down += 1.0; }
+
+        // --- FINAL CALCULATION ---
+        upScore = vwapScore.up + volScore.up + historyScore.up;
+        downScore = vwapScore.down + volScore.down + historyScore.down;
 
         let netScore = Math.abs(upScore - downScore);
-        if (isNaN(netScore)) netScore = 0;
-
         if (upScore === downScore) {
-            brainText.push("Data is perfectly tied. Using directional EMA trend alignment as the tie-breaker.");
-            if (ema9 >= ema21) upScore += 1.5; else downScore += 1.5;
+            brainText.push("Data is tied. Defaulting to VWAP alignment.");
+            if (currentClose >= vwap) upScore += 0.5; else downScore += 0.5;
             netScore = Math.abs(upScore - downScore);
         }
         
         let currentPred = (upScore > downScore) ? "UP" : "DOWN";
-        brainText.push(`Conclusion: Aggregate technical weight firmly favors ${currentPred}.`);
-        console.log(`📊 Scan -> His: U:${historyScore.up}/D:${historyScore.down} | Trnd: U:${trendScore.up}/D:${trendScore.down} | Vol: U:${volScore.up}/D:${volScore.down} | Pat: U:${patternScore.up}/D:${patternScore.down}`);
+        brainText.push(`Conclusion: Aggregate order flow and VWAP favors ${currentPred}.`);
         
         const ThoughtProcess = brainText.join(" ");
-        let numericConfidence = Math.min(92.0, 60 + (netScore * 2.5));
+        
+        // Realistic confidence scale tuned for the new scoring weights
+        let numericConfidence = Math.min(85.0, 50 + (netScore * 5.0));
         let displayConf = numericConfidence.toFixed(1) + "%";
         
+        // Retain dynamic Later Probability so the UI isn't static
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
-        if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
-        
-        let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
-        let laterMajorityProb = Math.max(laterUpProb, 100 - laterUpProb).toFixed(1);
+        let laterPred = currentPred === "UP" ? "DOWN" : "UP"; // Cyclical assumption as requested
+        let laterMajorityProb = Math.max(laterUpProb, 100 - laterUpProb).toFixed(1); 
+
         console.log(`🔥 Live Scan Update! Direction: ${currentPred} | current_conf: ${displayConf}`);
         
+        // Send true MACD and RSI back to UI
         memoryStore[`best_${targetEpoch}`] = {
-            current_pred: currentPred, current_conf: displayConf, numeric: (numericConfidence - 1),
-            later_pred: laterPred, later_conf: laterMajorityProb, rsi: rsi, macd: currentMACD, price: currentClose, thought_process: ThoughtProcess
+            current_pred: currentPred, current_conf: displayConf, numeric: numericConfidence,
+            later_pred: laterPred, later_conf: laterMajorityProb + "%", rsi: rsi, macd: currentMACD, price: currentClose, thought_process: ThoughtProcess
         };
 
-        await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
+        await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb + "%", ThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
