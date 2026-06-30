@@ -2,10 +2,7 @@
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
-
-//---- PROXY ---
-const { getRandomProxyAgent } = require('./proxyHelper.js');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const ccxt = require('ccxt'); // Added CCXT for reliable exchange connections
 
 // --- CONFIG ---
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
@@ -17,6 +14,12 @@ const ABI = [
     "function currentEpoch() view returns (uint256)", 
     "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
 ];
+
+// Initialize Binance exchange with automatic rate limiting
+const exchange = new ccxt.binance({
+    enableRateLimit: true, // Automatically pauses requests if nearing IP limits
+    options: { defaultType: 'spot' }
+});
 
 // --- STATE VARIABLES ---
 let provider, contract;
@@ -31,7 +34,6 @@ async function findFastestRPC() {
         "https://binance.llamarpc.com",
         "https://bsc-dataseed.binance.org"
     ];
-
     for (let url of nodes) {
         try {
             const p = new ethers.providers.JsonRpcProvider(url);
@@ -45,15 +47,11 @@ async function findFastestRPC() {
     throw new Error("All RPC nodes failed.");
 }
 
-const { refreshProxyPool } = require('./proxyHelper.js');
-
-
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
     try {
-        await refreshProxyPool();
         const fastest = await findFastestRPC();
-        provider = fastest.provider; 
+        provider = fastest.provider;
         contract = fastest.contract;
         console.log("✅ Connected to BSC successfully.");
         runLoop();
@@ -74,7 +72,7 @@ async function runLoop() {
 
 async function checkRound() {
     const currentEpoch = (await contract.currentEpoch()).toNumber();
-
+    
     // --- MEMORY LEAK FIX: Garbage Collection for old epochs ---
     const staleEpoch = currentEpoch - 10;
     Object.keys(memoryStore).forEach(key => {
@@ -89,11 +87,10 @@ async function checkRound() {
     const now = Math.floor(Date.now() / 1000);
     const secondsLeft = lockTimestamp - now;
 
-        // 0. RESET AT START OF NEW ROUND
+    // 0. RESET AT START OF NEW ROUND
     if (secondsLeft > 102) {
         if (!memoryStore[`cleared_${currentEpoch}`]) {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
-            
             // Grab the previous round's thoughts from memory
             let lastAnalysis = "";
             const lastData = memoryStore[`best_${currentEpoch - 1}`];
@@ -109,11 +106,9 @@ async function checkRound() {
                     thought_process: `Calibrating sensors for new epoch phase. Waiting for initial 3-minute market settling...${lastAnalysis}`
                 })
                 .eq('id', 1);
-                
             memoryStore[`cleared_${currentEpoch}`] = true;
         }
     }
-
 
     // 1. SCAN 
     if (secondsLeft > 0 && secondsLeft <= 102 && !memoryStore[`locked_${currentEpoch}`]) {
@@ -125,38 +120,35 @@ async function checkRound() {
     }
 
     // 2. LOCK-IN at 33 seconds
-if (secondsLeft <= 33 && secondsLeft > 0 && !memoryStore[`locked_${currentEpoch}`]) {
-    
-    // Failsafe: If proxy failed and we have no best prediction, force a SKIP
-    if (!memoryStore[`best_${currentEpoch}`]) {
-        console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing SKIP.`);
-        memoryStore[`best_${currentEpoch}`] = {
-            pred: "SKIP",
-            conf: "Proxy Timeout",
-            numeric: 0,
-            laterPrediction: "NONE",
-            laterMajorityProb: "0%",
-            rsi: 50,
-            currentMACD: 0,
-            currentClose: 0,
-            thoughtProcess: "Emergency Skip: Data retrieval failed before lock."
-        };
+    if (secondsLeft <= 33 && secondsLeft > 0 && !memoryStore[`locked_${currentEpoch}`]) {
+        
+        // Failsafe: If data retrieval failed and we have no best prediction, force a SKIP
+        if (!memoryStore[`best_${currentEpoch}`]) {
+            console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing SKIP.`);
+            memoryStore[`best_${currentEpoch}`] = {
+                pred: "SKIP",
+                conf: "Connection Timeout",
+                numeric: 0,
+                laterPrediction: "NONE",
+                laterMajorityProb: "0%",
+                rsi: 50,
+                currentMACD: 0,
+                currentClose: 0,
+                thoughtProcess: "Emergency Skip: Binance data retrieval failed before lock."
+            };
+        }
+        
+        console.log(`⏱️ Locking in Epoch #${currentEpoch}`);
+        await lockInPrediction(currentEpoch);
     }
-    
-    console.log(`⏱️ Locking in Epoch #${currentEpoch}`);
-    await lockInPrediction(currentEpoch);
-}
-
 
     // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
     if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
-    
     try {
         const { data: pendingLogs } = await supabaseClient
             .from('prediction_logs')
             .select('epoch_id')
             .eq('result', 'PENDING');
-            
         if (pendingLogs && pendingLogs.length > 0) {
             for (let log of pendingLogs) {
                 if (log.epoch_id <= currentEpoch - 2) {
@@ -187,103 +179,36 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
     if (error) console.error("Error updating stats:", error);
 }
 
-const { getRandomProxy, banProxy } = require('./proxyHelper.js');
-
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
         
-        // Target Binance API
-        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=1000`;
-        
         let candles = null;
         
-        // 1. Drastically increase retries. We have 3800+ proxies, let's use them.
-        const maxRetries = 12; 
-        
-        for (let i = 0; i < maxRetries; i++) {
-            const { agent, url } = getRandomProxy();
+        try {
+            // Using CCXT to fetch exactly 1000 candles. 
+            // CCXT automatically handles the HTTPS connection and Rate-Limit headers.
+            candles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
             
-            try {
-                const options = {
-                    method: 'GET',
-                    ...(agent && { agent }),
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                        'Accept': 'application/json'
-                    },
-                    // 2. Lower timeout to 4s. Fail fast so we don't miss the epoch lock.
-                    timeout: 4000 
-                };
-
-                if (url) {
-                    console.log(`[Attempt ${i+1}/${maxRetries}] Routing via: ${url}`);
-                }
-
-                const res = await fetch(targetUrl, options);
-                
-                if (res.ok) {
-                    const data = await res.json();
-                    if (Array.isArray(data) && data.length >= 50) {
-                        candles = data;
-                        console.log(`✅ Proxy success on attempt ${i+1}!`);
-                        break; 
-                    }
-                } else {
-                    console.warn(`Attempt ${i+1}: Bad status code ${res.status}. Banning proxy.`);
-                    banProxy(url); 
-                }
-            } catch (e) {
-                console.warn(`Attempt ${i+1} Failure: ${e.message}. Banning proxy.`);
-                banProxy(url); 
+            if (Array.isArray(candles) && candles.length >= 50) {
+                console.log("✅ Binance market data successfully retrieved.");
+            } else {
+                throw new Error("Insufficient candles returned from Binance.");
             }
-            
-            // 3. Shorter delay. Get right to the next proxy.
-            if (!candles) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-        }
-
-        // 4. DIRECT FALLBACK: If 12 proxies fail, try your server's real IP as a last resort
-        if (!candles) {
-            console.warn("⚠️ All proxy attempts exhausted. Attempting direct unproxied connection to Binance...");
-            try {
-                const directOptions = {
-                    method: 'GET',
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                        'Accept': 'application/json'
-                    },
-                    timeout: 5000
-                };
-                
-                const directRes = await fetch(targetUrl, directOptions);
-                if (directRes.ok) {
-                    const data = await directRes.json();
-                    if (Array.isArray(data) && data.length >= 50) {
-                        candles = data;
-                        console.log("✅ Direct connection saved the round!");
-                    }
-                } else {
-                    console.warn(`Direct connection also rejected with status: ${directRes.status}`);
-                }
-            } catch (e) {
-                console.error("Direct connection failed:", e.message);
-            }
-        }
-
-        if (!candles) {
-            throw new Error("Critical: Proxy pool and direct fallback both failed to return valid Binance data.");
+        } catch (e) {
+            console.error("Direct connection failed:", e.message);
+            throw e; // Pass the error down to the failsafe block
         }
         
-        const opens = candles.map(c => parseFloat(c));
+        // CCXT array structure mirrors Binance natively: [timestamp, open, high, low, close, volume]
+        const opens = candles.map(c => parseFloat(c[1]));
         const highs = candles.map(c => parseFloat(c[2]));
         const lows = candles.map(c => parseFloat(c[3]));
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
         const currentClose = closes[closes.length - 1];
 
-       // --- IMPROVED RSI Array: Wilder's Smoothing (RMA) ---
+        // --- IMPROVED RSI Array: Wilder's Smoothing (RMA) ---
         let gains = [], losses = [];
         for (let i = 1; i < closes.length; i++) {
             let diff = closes[i] - closes[i - 1];
@@ -295,7 +220,7 @@ async function generatePrediction(targetEpoch) {
         let rsiHistory = [];
         let avgGain = gains.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
         let avgLoss = losses.slice(0, 14).reduce((a, b) => a + b, 0) / 14;
-        
+
         // First RSI value (at index 14)
         rsiHistory.push(avgLoss === 0 ? 100 : 100 - (100 / (1 + (avgGain / avgLoss))));
 
@@ -324,7 +249,6 @@ async function generatePrediction(targetEpoch) {
         let previousRSI_1_candle_ago = rsiHistory[rsiHistory.length - 2] || rsi;
         let previousRSI_4_candles_ago = rsiHistory[rsiHistory.length - 5] || previousRSI_3_candles_ago;
         let previousRSISlope = (previousRSI_1_candle_ago - previousRSI_4_candles_ago) / 3;
-        
         let rsiAcceleration = rsiSlope - previousRSISlope;
 
         // BB
@@ -339,7 +263,7 @@ async function generatePrediction(targetEpoch) {
         // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data[0]]; 
+            let emaArray = [data]; 
             for (let i = 1; i < data.length; i++) {
                 emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             }
