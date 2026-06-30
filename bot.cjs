@@ -250,7 +250,7 @@ async function generatePrediction(targetEpoch) {
         // EMA Helper
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
-            let emaArray = [data]; 
+            let emaArray = [data[0]]; 
             for (let i = 1; i < data.length; i++) {
                 emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             }
