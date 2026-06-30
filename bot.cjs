@@ -368,8 +368,8 @@ async function generatePrediction(targetEpoch) {
         }
         
         // FIX: The prediction is now permanently tied to the exact direction the bot favors.
-        let prediction = (upScore > downScore) ? "UP" : "DOWN";
-        brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
+        let currentPred = (upScore > downScore) ? "UP" : "DOWN";
+        brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${currentPred}.`);
         
         const ThoughtProcess = brainText.join(" ");
         let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
@@ -383,10 +383,10 @@ async function generatePrediction(targetEpoch) {
         
         let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
-        console.log(`🔥 Live Scan Update! Direction: ${prediction} | current_conf: ${displayConf}`);
+        console.log(`🔥 Live Scan Update! Direction: ${currentPred} | current_conf: ${displayConf}`);
         
         memoryStore[`best_${targetEpoch}`] = {
-            current_pred: prediction,
+            current_pred: currentPred,
             current_conf: displayConf,
             numeric: (numericConfidence - 1),
             later_pred: laterPred,
@@ -400,7 +400,7 @@ async function generatePrediction(targetEpoch) {
         console.log("DEBUG: MACD value being sent:", currentMACD);
         console.log("DEBUG: RSI value being sent:", rsi);
         
-        await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
+        await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
