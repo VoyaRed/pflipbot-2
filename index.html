@@ -10,7 +10,6 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        /* The Full-Screen Overlay */
         #loader-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255, 240, 245, 0.95); display: none; 
@@ -19,19 +18,18 @@
         .cake-flip { font-size: 80px; animation: flip 1s infinite linear; }
         @keyframes flip { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
 
-         /* Ledger Status Colors */
         .status-win { color: #28a745 !important; font-weight: 800; }
         .status-loss { color: #dc3545 !important; font-weight: 800; }
         .status-skip { color: #8f90b0 !important; font-weight: 600; }
         
-        /* Small Direction Indicators */
         .dir-up { color: var(--up); font-size: 0.8rem; font-weight: bold; }
         .dir-down { color: var(--down); font-size: 0.8rem; font-weight: bold; }
+        .dir-skip { color: var(--neutral); font-size: 0.8rem; font-weight: bold; }
 
         @keyframes lockPop {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.05); box-shadow: 0 0 20px var(--primary); }
-        100% { transform: scale(1); }
+            0% { transform: scale(1); }
+            50% { transform: scale(1.03); box-shadow: 0 0 20px var(--primary); }
+            100% { transform: scale(1); }
         }
         
         .locked-animation { 
@@ -45,7 +43,7 @@
             --primary-glow: rgba(255, 107, 107, 0.5); --accent: #ffb347; 
             --border: #eee; --price-bg: #fafafa; --header-bg: #f0f0f0;
             --pattern-1: #ffb347; --pattern-2: #ff6b6b;
-            --neutral: #9e9e9e; 
+            --neutral: #8e8e93; 
         }
 
         body.dark-mode {
@@ -70,13 +68,11 @@
 
         .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); border: 4px solid var(--panel); box-sizing: border-box; }
         
-        /* Restored layout to not stretch, leaving empty space */
         .main-layout { display: grid; grid-template-columns: 1fr auto 1fr; gap: 30px; align-items: start; width: 100%; box-sizing: border-box; }
         .column-left { display: flex; flex-direction: column; min-width: 0; }
         .column-middle { display: flex; justify-content: center; align-items: start; min-width: 0; }
         .column-right { display: flex; flex-direction: column; min-width: 0; }
 
-        /* Thought Box restored to fixed smaller height */
         .thought-box {
             background: var(--panel); border-radius: 24px; padding: 25px;
             box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.08); border: 2px solid var(--border);
@@ -87,10 +83,8 @@
         .thought-text { font-size: 1rem; color: var(--text); line-height: 1.6; font-weight: 500; flex-grow: 1; overflow-y: auto; padding-right: 5px; }
         .thought-timestamp { font-size: 0.8rem; color: var(--subtext); margin-top: 15px; text-align: right; font-weight: bold; }
 
-        /* Restored rounds container to align to center, creating staggered sizes */
         .rounds-container { display: flex; flex-direction: row; justify-content: center; gap: 20px; flex-wrap: nowrap; align-items: center; margin-bottom: 0; }
         
-        /* Cards restored to natural heights without forced flex-grow stretching */
         .card { 
             background: var(--panel); border-radius: 24px; width: 310px; padding: 0; 
             display: flex; flex-direction: column; overflow: hidden;
@@ -119,6 +113,7 @@
         .prediction-badge { padding: 10px 15px; border-radius: 12px; font-size: 1.4rem; font-weight: 800; width: 100%; text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.1); }
         .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .pred-skip { background: var(--neutral); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         .pred-waiting { background: var(--price-bg); color: var(--subtext); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.05); font-size: 1.2rem; border: 1px solid var(--border); }
         .pred-skip-up { background: linear-gradient(90deg, var(--neutral) 50%, var(--up) 50%); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         .pred-skip-down { background: linear-gradient(90deg, var(--neutral) 50%, var(--down) 50%); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
@@ -138,13 +133,11 @@
         .price-row span:first-child { color: var(--subtext); font-weight: 600; }
         .price-row span:last-child { font-weight: bold; color: var(--text); }
 
-        /* Ledger restored to fixed smaller height */
         .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid var(--border); display: flex; flex-direction: column; height: 500px; box-sizing: border-box; }
         .ledger-item { margin-bottom: 8px; background: var(--price-bg); border: 1px solid var(--border); padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; color: var(--text); }
         .confidence-tag { font-size: 0.85rem; background: var(--primary-glow); padding: 4px 8px; border-radius: 6px; color: var(--text); font-weight: bold;}
         .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 6px; min-height: 1.2em; font-weight: 600; }
         
-        /* Fallback for smaller monitors */
         @media (max-width: 1600px) {
             .main-layout { grid-template-columns: 1fr; }
             .column-left, .column-right { max-width: 100%; }
@@ -182,8 +175,6 @@
         <div id="tv-container" class="chart-box"></div>
         
         <div class="main-layout">
-            
-            <!-- LEFT COLUMN: Ledger -->
             <div class="column-left">
                 <div class="ledger-box">
                     <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 800; color: var(--primary);">UpsideDownCake Execution Ledger 🍰</h3>
@@ -191,10 +182,8 @@
                 </div>
             </div> 
             
-            <!-- MIDDLE COLUMN: Cards -->
             <div class="column-middle">
                 <div class="rounds-container">
-                    
                     <div class="card expired old-expired">
                         <div class="card-header">
                             <span>Expired</span>
@@ -311,7 +300,6 @@
                 </div>
             </div> 
 
-            <!-- RIGHT COLUMN: Thoughts -->
             <div class="column-right">
                 <div class="thought-box">
                     <h3>🧠 Inside the Bot's Brain</h3>
@@ -319,7 +307,6 @@
                     <div id="thought-timestamp" class="thought-timestamp"></div>
                 </div>
             </div>
-
         </div> 
     </div>
 
@@ -427,26 +414,18 @@
         async function updateMarketVisualsFromDB() {
             const { data, error } = await supabaseClient.from('market_stats').select('*').eq('id', 1).maybeSingle(); 
             if (data && !error) {
-        const rsiEl = document.getElementById('rsi');
-        const macdEl = document.getElementById('macd');
-        
-        // Update MACD
-            if (macdEl && data.macd !== null && data.macd !== undefined) {
-                let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
+                const rsiEl = document.getElementById('rsi');
+                const macdEl = document.getElementById('macd');
                 
-                // 1. Display the actual number/text on the screen
-                macdEl.textContent = Number(data.macd).toFixed(2); 
+                if (macdEl && data.macd !== null && data.macd !== undefined) {
+                    let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
+                    macdEl.textContent = Number(data.macd).toFixed(4); 
+                    macdEl.style.color = macdColor;
+                }     
                 
-                // 2. Apply the color you calculated to the element's style
-                macdEl.style.color = macdColor;
-            }     
-            
-            // Update RSI
-            if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
-                // Display the RSI text on the screen
-                rsiEl.textContent = Number(data.rsi).toFixed(2);
-            }
-        }  
+                if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
+                    rsiEl.textContent = Number(data.rsi).toFixed(2);
+                }
 
                 const thoughtEl = document.getElementById('bot-thoughts');
                 const timeEl = document.getElementById('thought-timestamp');
@@ -459,14 +438,7 @@
                 if (data.current_pred && data.current_pred !== "NONE") {
                     liveNextPred = data.current_pred;
                     liveNextConf = data.current_conf || "0%"; 
-                    
-                    if (data.current_pred === "SKIP") {
-                        if (data.current_conf && String(data.current_conf).includes("UP")) liveNextClass = "pred-skip-up";
-                        else if (data.current_conf && String(data.current_conf).includes("DOWN")) liveNextClass = "pred-skip-down";
-                        else liveNextClass = "pred-waiting";
-                    } else {
-                        liveNextClass = `pred-${String(data.current_pred).toLowerCase()}`;
-                    }
+                    liveNextClass = `pred-${String(data.current_pred).toLowerCase()}`;
                 } else {
                     liveNextPred = "Waiting...";
                     liveNextConf = "Calculating...";
@@ -479,7 +451,7 @@
                     laterBadge.className = `prediction-badge pred-${String(data.later_pred).toLowerCase()}`;
                 }
             }
-        
+        }
         
         function startTimer(targetTimestamp) {
             clearInterval(timerInterval);
@@ -568,10 +540,10 @@
                 await updateMarketVisualsFromDB();
 
                 const { data, error } = await supabaseClient
-                .from('prediction_logs')
-                .select('*')
-                 .order('epoch_id', { ascending: false })
-                 .limit(10);
+                    .from('prediction_logs')
+                    .select('*')
+                    .order('epoch_id', { ascending: false })
+                    .limit(10);
                 if (data) {
                     for (let log of data) {
                         if (log.epoch_id <= prevEpoch) {
@@ -601,12 +573,6 @@
 
         function getActualBetInfo(log) {
             if (!log || !log.predicted_side || log.predicted_side === "NONE") return { text: "---", class: "pred-waiting" };
-            if (log.predicted_side === "SKIP") {
-                // Changed the text to just "SKIP" but kept your custom classes so it still looks nice!
-                if (log.confidence && String(log.confidence).includes("Try: UP")) return { text: "SKIP", class: "pred-skip-up" };
-                else if (log.confidence && String(log.confidence).includes("Try: DOWN")) return { text: "SKIP", class: "pred-skip-down" };
-                return { text: "SKIP", class: "pred-waiting" };
-            }
             return { text: log.predicted_side, class: `pred-${String(log.predicted_side).toLowerCase()}` };
         }
 
@@ -748,12 +714,12 @@
             if (safeResult.includes("WIN")) resClass = "status-win";
             else if (safeResult.includes("LOSS")) resClass = "status-loss";
             
-            let dirClass = safePredicted === "UP" ? "dir-up" : (safePredicted === "DOWN" ? "dir-down" : "");
+            let dirClass = "dir-skip";
+            if (safePredicted === "UP") dirClass = "dir-up";
+            else if (safePredicted === "DOWN") dirClass = "dir-down";
             
-            // 1. Check if a ledger row for this epoch already exists
-let existingLedgerItem = document.getElementById(`ledger-epoch-${epoch}`);
+            let existingLedgerItem = document.getElementById(`ledger-epoch-${epoch}`);
 
-            // 2. Build the inner HTML for the row
             let ledgerContent = `
                 <div style="flex: 1;">
                     <strong>Epoch #${epoch}</strong> 
@@ -767,16 +733,12 @@ let existingLedgerItem = document.getElementById(`ledger-epoch-${epoch}`);
             `;
             
             if (existingLedgerItem) {
-                // 3a. If the row already exists, just update its contents with the latest prediction
                 existingLedgerItem.innerHTML = ledgerContent;
             } else {
-                // 3b. If it doesn't exist yet, create a new row
                 let newItem = document.createElement('div');
                 newItem.className = 'ledger-item';
-                newItem.id = `ledger-epoch-${epoch}`; // Assign the unique ID here
+                newItem.id = `ledger-epoch-${epoch}`; 
                 newItem.innerHTML = ledgerContent;
-                
-                // Append the new item to the ledger
                 ledger.appendChild(newItem); 
             }
         }
