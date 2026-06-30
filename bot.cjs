@@ -3,7 +3,7 @@ const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const ccxt = require('ccxt'); 
-const WebSocket = require('ws'); // <-- NEW: Imported WebSocket library
+const WebSocket = require('ws');
 
 // --- CONFIG ---
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
@@ -29,12 +29,13 @@ let memoryStore = {};
 let lastScrapeTime = 0;
 const SCRAPE_INTERVAL = 22000; 
 
-// <-- NEW: Local storage for our zero-latency candles
-let localCandles = []; 
+// Local storage for our zero-latency candles
+let localCandles = [];
+let isInitialFetchDone = false;
+let binanceSleepUntil = 0; 
 
-// <-- NEW: WebSocket Stream Manager
+// WebSocket Stream Manager
 function startCandleStream() {
-    // Connect to BNB/USDT on the 5-minute timeframe
     const wsUrl = 'wss://stream.binance.com:9443/ws/bnbusdt@kline_5m';
     const ws = new WebSocket(wsUrl);
 
@@ -50,14 +51,15 @@ function startCandleStream() {
             console.log(`✅ Heartbeat: Received tick for BNB/USDT. Current Close: ${kline.c}`);
         }
         
-        // Match the exact format of CCXT's fetchOHLCV [Time, Open, High, Low, Close, Volume]
+        // UPGRADE 1: Capture 'V' (Taker buy base asset volume) for Volume Delta calculation
         const candle = [
             kline.t,
             parseFloat(kline.o),
             parseFloat(kline.h),
             parseFloat(kline.l),
             parseFloat(kline.c),
-            parseFloat(kline.v)
+            parseFloat(kline.v),
+            parseFloat(kline.V || 0) // New: Taker Buy Volume
         ];
 
         // Update the current candle if time matches, otherwise push new candle
@@ -65,12 +67,12 @@ function startCandleStream() {
             localCandles[localCandles.length - 1] = candle; 
         } else {
             localCandles.push(candle);
-            // Keep exactly 1000 candles in memory to match your previous limit
             if (localCandles.length > 1000) localCandles.shift(); 
         }
     });
 
     ws.on('error', (err) => console.error("❌ WebSocket Error:", err));
+
     ws.on('close', () => {
         console.log("🔌 WebSocket disconnected. Reconnecting in 5 seconds...");
         setTimeout(startCandleStream, 5000);
@@ -97,17 +99,12 @@ async function findFastestRPC() {
     throw new Error("All RPC nodes failed.");
 }
 
-let isInitialFetchDone = false;
-let binanceSleepUntil = 0; 
-
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
 
-    // Prevent execution if the bot is currently in Sleep Mode
     if (Date.now() < binanceSleepUntil) {
         const remainingTime = Math.ceil((binanceSleepUntil - Date.now()) / 1000);
         console.log(`💤 Bot is in Sleep Mode. Skipping initialization. Waking up in ${remainingTime}s...`);
-        
         setTimeout(startBot, 10000);
         return;
     }
@@ -117,6 +114,7 @@ async function startBot() {
         await exchange.loadMarkets();
         
         console.log("Fetching initial 1000 candles...");
+        // Fetch REST candles (Note: Standard CCXT format does not include Taker Buy Volume, our logic handles this gracefully)
         localCandles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
         startCandleStream(); 
         isInitialFetchDone = true;
@@ -129,37 +127,25 @@ async function startBot() {
         runLoop();
     } catch (error) {
         if (error.message.includes('418') || error.message.includes('429')) {
-            let sleepDurationMs = 5 * 60 * 1000; // Default 5 min fallback
+            let sleepDurationMs = 5 * 60 * 1000;
             let penaltySource = "Default Fallback";
 
-            // 1. Check for the explicit Unix timestamp in the Binance error message
-            // This matches the pattern "banned until 1782850259797" and extracts the numbers
             const banMatch = error.message.match(/banned until (\d+)/);
 
             if (banMatch && banMatch[1]) {
                 const banLiftTimestampMs = parseInt(banMatch[1], 10);
-                const bufferMs = 5000; // 5-second safety buffer
-                
-                // Calculate sleep duration based on the extracted timestamp
+                const bufferMs = 5000; 
                 sleepDurationMs = (banLiftTimestampMs - Date.now()) + bufferMs;
                 penaltySource = "Binance Error Timestamp (+ 5s buffer)";
 
-                // Sanity check: If system clocks are out of sync or the timestamp is in the past, 
-                // revert to the default 5-minute fallback to prevent infinite rapid looping.
                 if (sleepDurationMs <= 0) {
                     sleepDurationMs = 5 * 60 * 1000;
                     penaltySource = "Default Fallback (Timestamp was in the past)";
                 }
-            } 
-            // 2. Fallback to header extraction if the explicit timestamp isn't found
-            else {
+            } else {
                 const headers = error.response?.headers || error.responseHeaders;
-                
                 if (headers) {
-                    const rawHeader = typeof headers.get === 'function' 
-                        ? headers.get('retry-after') || headers.get('Retry-After')
-                        : headers['retry-after'] || headers['Retry-After'];
-                        
+                    const rawHeader = typeof headers.get === 'function' ? headers.get('retry-after') || headers.get('Retry-After') : headers['retry-after'] || headers['Retry-After'];
                     if (rawHeader) {
                         const retrySeconds = parseInt(rawHeader, 10);
                         if (!isNaN(retrySeconds)) {
@@ -170,15 +156,12 @@ async function startBot() {
                 }
             }
 
-            // 3. Apply the sleep duration globally
             binanceSleepUntil = Date.now() + sleepDurationMs;
             const sleepMinutes = (sleepDurationMs / 1000 / 60).toFixed(2);
 
             console.error(`🚨 Binance Ban/Rate Limit Detected!`);
             console.error(`   -> Source: ${penaltySource}`);
             console.error(`   -> Entering Sleep Mode for ${sleepMinutes} minutes.`);
-
-            // 4. Schedule the wake-up
             setTimeout(startBot, sleepDurationMs);
         } else {
             console.error(`❌ Initialization failed (Error: ${error.message}). Retrying in 10s...`);
@@ -202,12 +185,10 @@ async function checkRound() {
     // Garbage Collection for old epochs
     const staleEpoch = currentEpoch - 10;
     Object.keys(memoryStore).forEach(key => {
-        if (key.includes(`_${staleEpoch}`)) {
-            delete memoryStore[key];
-        }
+        if (key.includes(`_${staleEpoch}`)) delete memoryStore[key];
     });
 
-    // --- 1. SCAN THE CURRENT ROUND ---
+    // SCAN THE CURRENT ROUND
     const nextRoundData = await contract.rounds(currentEpoch);
     const lockTimestamp = nextRoundData.lockTimestamp.toNumber();
     const now = Math.floor(Date.now() / 1000);
@@ -219,18 +200,16 @@ async function checkRound() {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
             let lastAnalysis = "";
             const lastData = memoryStore[`best_${currentEpoch - 1}`];
+
             if (lastData && lastData.thought_process) {
                 lastAnalysis = `\n\n--- LAST MARKET ANALYSIS ---\n${lastData.thought_process}`;
             }
 
-            await supabaseClient
-                .from('market_stats')
-                .update({ 
-                    current_pred: 'NONE', 
-                    current_conf: 'Calculating...',
-                    thought_process: `Just uhhh... waiting for the next epoch.. and then we can go from there! Yk what I mean!! ||  Waiting for initial 3-minute market settling...${lastAnalysis}`
-                })
-                .eq('id', 1);
+            await supabaseClient.from('market_stats').update({ 
+                current_pred: 'NONE', current_conf: 'Calculating...',
+                thought_process: `Waiting for initial 3-minute market settling...${lastAnalysis}`
+            }).eq('id', 1);
+
             memoryStore[`cleared_${currentEpoch}`] = true;
         }
     }
@@ -246,38 +225,26 @@ async function checkRound() {
 
     // LOCK-IN at 33 seconds
     if (secondsLeft <= 33 && secondsLeft > 0 && !memoryStore[`locked_${currentEpoch}`]) {
-        
         if (!memoryStore[`best_${currentEpoch}`]) {
-            console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback direction prediction.`);
+            console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback.`);
             memoryStore[`best_${currentEpoch}`] = {
-                current_pred: "NONE", // Default fallback direction
-                current_conf: "binance trippin 1sec",
-                numeric: 50,
-                later_pred: "NONE",
-                later_conf: "0%",
-                rsi: 0,
-                macd: 0,
-                price: 0,
+                current_pred: "NONE", current_conf: "binance trippin 1sec", numeric: 50,
+                later_pred: "NONE", later_conf: "0%", rsi: 0, macd: 0, price: 0,
                 thought_process: "Emergency Fallback: Binance data retrieval timed out before lock."
             };
         }
-        
         console.log(`⏱️ Locking in Epoch #${currentEpoch}`);
         await lockInPrediction(currentEpoch);
     }
 
-    // --- 3. VERIFY PENDING EXPIRED ROUNDS ---
+    // VERIFY PENDING EXPIRED ROUNDS
     if (currentEpoch > 1) await verifyResult(currentEpoch - 1);
+
     try {
-        const { data: pendingLogs } = await supabaseClient
-            .from('prediction_logs')
-            .select('epoch_id')
-            .eq('result', 'PENDING');
+        const { data: pendingLogs } = await supabaseClient.from('prediction_logs').select('epoch_id').eq('result', 'PENDING');
         if (pendingLogs && pendingLogs.length > 0) {
             for (let log of pendingLogs) {
-                if (log.epoch_id <= currentEpoch - 2) {
-                    await verifyResult(log.epoch_id);
-                }
+                if (log.epoch_id <= currentEpoch - 2) await verifyResult(log.epoch_id);
             }
         }
     } catch (e) {
@@ -286,20 +253,12 @@ async function checkRound() {
 }
 
 async function updateMarketStats(rsi, currentMACD, currentClose, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%", thoughtProcess = "") {
-    const { error } = await supabaseClient
-        .from('market_stats')
-        .upsert([{ 
-            id: 1, 
-            rsi: rsi, 
-            macd: currentMACD, 
-            price: currentClose,
-            current_pred: currentPred,
-            current_conf: currentConf,
-            later_pred: laterPred,
-            later_conf: laterConf,
-            thought_process: thoughtProcess,
-            updated_at: new Date().toISOString() 
-        }]);
+    const { error } = await supabaseClient.from('market_stats').upsert([{ 
+        id: 1, rsi: rsi, macd: currentMACD, price: currentClose,
+        current_pred: currentPred, current_conf: currentConf,
+        later_pred: laterPred, later_conf: laterConf,
+        thought_process: thoughtProcess, updated_at: new Date().toISOString() 
+    }]);
     if (error) console.error("Error updating stats:", error);
 }
 
@@ -308,28 +267,23 @@ async function generatePrediction(targetEpoch) {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
         let candles = localCandles;
         
-        // --- THE FIX: No more REST API Fallback ---
-        // If the array is empty or too small, we safely abort the prediction 
-        // for this loop and let the WebSocket keep doing its job.
         if (!candles || candles.length < 50) {
             console.log("⚠️ Waiting for WebSocket to populate local candles... skipping prediction this tick.");
-            return; // Abort silently without triggering a ban
+            return; 
         }
 
-        if (Array.isArray(candles) && candles.length >= 50) {
-            console.log("✅ Binance market data verified (Zero-Latency).");
-        } else {
-            throw new Error("Insufficient candles in local memory.");
-        }
-        
         const opens = candles.map(c => parseFloat(c[1]));
         const highs = candles.map(c => parseFloat(c[2]));
         const lows = candles.map(c => parseFloat(c[3]));
         const closes = candles.map(c => parseFloat(c[4]));
         const volumes = candles.map(c => parseFloat(c[5])); 
+        
+        // Parse Taker Buy Volume. If missing (from REST fallback), estimate as 50% of total volume
+        const takerBuyVols = candles.map(c => c[6] !== undefined ? parseFloat(c[6]) : (parseFloat(c[5]) / 2));
+        
         const currentClose = closes[closes.length - 1];
 
-        // RSI Array Calculations
+        // RSI Calculations
         let gains = [], losses = [];
         for (let i = 1; i < closes.length; i++) {
             let diff = closes[i] - closes[i - 1];
@@ -347,22 +301,20 @@ async function generatePrediction(targetEpoch) {
             avgLoss = ((avgLoss * 13) + losses[i]) / 14;
             
             let currentRsi = 100;
-            if (avgLoss !== 0) {
-                currentRsi = 100 - (100 / (1 + (avgGain / avgLoss)));
-            } else if (avgGain === 0) {
-                currentRsi = 0;
-            }
+            if (avgLoss !== 0) currentRsi = 100 - (100 / (1 + (avgGain / avgLoss)));
+            else if (avgGain === 0) currentRsi = 0;
             rsiHistory.push(currentRsi);
         }
 
         let rsi = rsiHistory[rsiHistory.length - 1];
         let previousRSI_3_candles_ago = rsiHistory[rsiHistory.length - 4] || rsi;
         let rsiSlope = (rsi - previousRSI_3_candles_ago) / 3;
-        let previousRSI_1_candle_ago = rsiHistory[rsiHistory.length - 2] || rsi;
-        let previousRSI_4_candles_ago = rsiHistory[rsiHistory.length - 5] || previousRSI_3_candles_ago;
-
-        let previousRSISlope = (previousRSI_1_candle_ago - previousRSI_4_candles_ago) / 3;
-        let rsiAcceleration = rsiSlope - previousRSISlope;
+        
+        // UPGRADE 2: Dynamic RSI Thresholds
+        const rsiLookbackLength = Math.min(50, rsiHistory.length);
+        const rsiSMA = rsiHistory.slice(-rsiLookbackLength).reduce((a, b) => a + b, 0) / rsiLookbackLength;
+        const dynamicOverbought = Math.max(65, rsiSMA + 12);
+        const dynamicOversold = Math.min(35, rsiSMA - 12);
 
         // Bollinger Bands
         const bbPeriod = 20;
@@ -373,17 +325,14 @@ async function generatePrediction(targetEpoch) {
         const upperBB = sma + (stdDev * 2);
         const lowerBB = sma - (stdDev * 2);
 
-        // EMA Helper
+        // EMAs & MACD
         const calculateEMAArray = (data, period) => {
             const k = 2 / (period + 1);
             let emaArray = [data[0]]; 
-            for (let i = 1; i < data.length; i++) {
-                emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
-            }
+            for (let i = 1; i < data.length; i++) emaArray.push((data[i] * k) + (emaArray[i - 1] * (1 - k)));
             return emaArray;
         };
 
-        // EMA & MACD
         const ema9 = calculateEMAArray(closes, 9)[closes.length - 1];
         const ema21 = calculateEMAArray(closes, 21)[closes.length - 1];
         const ema12Array = calculateEMAArray(closes, 12);
@@ -396,63 +345,67 @@ async function generatePrediction(targetEpoch) {
         const currentHist = currentMACD - currentSignal;
         const prevHist = (macdLineArray[macdLineArray.length - 2] - signalLineArray[signalLineArray.length - 2]);
 
-        // Volume
-        const volSMA20 = volumes.slice(-20).reduce((a,b)=>a+b,0) / 20;
+        // UPGRADE 3: Volume Delta Analysis
         const currentVol = volumes[volumes.length - 1];
-        const hasVolumeSpike = currentVol > (volSMA20 * 1.5);
+        const currentTakerBuy = takerBuyVols[takerBuyVols.length - 1];
+        const currentTakerSell = currentVol - currentTakerBuy;
+        const volDelta = currentTakerBuy - currentTakerSell; // Positive = Bulls hit the ask, Negative = Bears hit the bid
 
         // Historical Trends
         let recentUps = 0, recentDowns = 0;
         const roundPromises = [];
-        for(let i=1; i<=5; i++) {
-            roundPromises.push(contract.rounds(targetEpoch - i).catch(() => null));
-        }
+        for(let i=1; i<=5; i++) roundPromises.push(contract.rounds(targetEpoch - i).catch(() => null));
         const pastRounds = await Promise.all(roundPromises);
+        
         pastRounds.forEach(r => {
             if (r && r.oracleCalled) {
                 const lp = parseFloat(ethers.utils.formatUnits(r.lockPrice, 8));
                 const cp = parseFloat(ethers.utils.formatUnits(r.closePrice, 8));
-                if (cp > lp) recentUps++;
-                else if (cp < lp) recentDowns++;
+                if (cp > lp) recentUps++; else if (cp < lp) recentDowns++;
             }
         });
 
-        // --- INITIALIZE STRUCTURED CATEGORY OBJECTS ---
+        // --- CATEGORY SCORING ---
         let upScore = 0, downScore = 0;
         let brainText = []; 
+        let historyScore = { up: 0, down: 0 }, trendScore = { up: 0, down: 0 }, volScore = { up: 0, down: 0 }, patternScore = { up: 0, down: 0 };
 
-        let historyScore = { up: 0, down: 0 };
-        let trendScore = { up: 0, down: 0 };
-        let volScore = { up: 0, down: 0 };
-        let patternScore = { up: 0, down: 0 };
-
-        // RSI Exhaustion Penalties
+        // Dynamic RSI Penalties
         if (rsiSlope > 0.5) {
-            brainText.push("RSI is aggressively rising; momentum is strong.");
-            if (rsi > 65) {
+            if (rsi > dynamicOverbought) {
                 volScore.down += 2.5;
-                brainText.push("Warning: RSI is highly overbought (>65) while surging. Anticipating a bearish exhaustion reversal.");
+                brainText.push(`Warning: RSI (${rsi.toFixed(1)}) exceeded dynamic ceiling (${dynamicOverbought.toFixed(1)}). Anticipating a bearish exhaustion reversal.`);
             } else {
                 trendScore.up += 1.0;
+                brainText.push("RSI is aggressively rising; momentum is strong.");
             }
         }
         if (rsiSlope < -0.5) {
-            brainText.push("RSI is skyrocketing downward; bearish momentum is accelerating.");
-            if (rsi < 35) {
+            if (rsi < dynamicOversold) {
                 volScore.up += 2.5;
-                brainText.push("Warning: RSI is highly oversold (<35) while crashing. Anticipating a bullish exhaustion reversal.");
+                brainText.push(`Warning: RSI (${rsi.toFixed(1)}) crashed through dynamic floor (${dynamicOversold.toFixed(1)}). Anticipating a bullish exhaustion reversal.`);
             } else {
                 trendScore.down += 1.0;
+                brainText.push("RSI is skyrocketing downward; bearish momentum is accelerating.");
             }
         }
-        if (rsiAcceleration < 0 && rsi > 60) brainText.push("Warning: RSI rise is slowing down; potential overbought reversal.");
 
-        // CATEGORY 1: Round History
+        // Volume Delta Scoring (Who is controlling the tape)
+        if (volDelta > 0 && volDelta > (currentVol * 0.15)) {
+            volScore.up += 1.5;
+            brainText.push("Order Flow Analysis: Strong aggregate Buy Delta. Bulls are actively lifting the ask.");
+        } else if (volDelta < 0 && Math.abs(volDelta) > (currentVol * 0.15)) {
+            volScore.down += 1.5;
+            brainText.push("Order Flow Analysis: Strong aggregate Sell Delta. Bears are actively hitting the bid.");
+        }
+
+        // History
         if (recentUps >= 3) { historyScore.up += 1.0; brainText.push("Recent historical rounds lean bullish."); }
         if (recentUps === 5) historyScore.up += 1.5;
         if (recentDowns >= 3) { historyScore.down += 1.0; brainText.push("Recent historical rounds lean bearish."); }
         if (recentDowns === 5) historyScore.down += 1.5;
 
+        // Pattern Variables
         const prevOpen = opens[opens.length - 2];
         const prevClose = closes[closes.length - 2];
         const prevHigh = highs[highs.length - 2];
@@ -461,7 +414,6 @@ async function generatePrediction(targetEpoch) {
         const upperWick = prevHigh - Math.max(prevOpen, prevClose);
         const lowerWick = Math.min(prevOpen, prevClose) - prevLow;
         const bodySize = Math.max(Math.abs(prevClose - prevOpen), 0.0001);
-
         const roc3 = ((currentClose - closes[closes.length - 4]) / closes[closes.length - 4]) * 100;
 
         let trSum = 0;
@@ -472,55 +424,35 @@ async function generatePrediction(targetEpoch) {
             trSum += Math.max(highLow, highClose, lowClose);
         }
         const atrPercentage = ((trSum / 14) / currentClose) * 100;
-
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
 
-        // Choppiness Threshold
         if ((atrPercentage < 0.08 || isChoppy) && ema9 > ema21) { 
             volScore.up += 2.5;
             brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
             if (currentClose < sma) {
                 volScore.up += 2.5;
                 brainText.push("Price is lagging beneath the Moving Average, forcing a counter-structural upcall.");
-                if (rsi < 40) { volScore.up += 1.5; brainText.push(`RSI is low at ${rsi.toFixed(1)}, optimizing safety threshold.`); }
             } else if (currentClose > sma) {
                 volScore.down += 2.5;
                 brainText.push("Price is floating above the Moving Average, forcing a counter-structural downcall.");
-                if (rsi > 60) { volScore.down += 1.5; brainText.push(`RSI is elevated at ${rsi.toFixed(1)}, optimizing resistance threshold.`); }
             }
         } else if ((atrPercentage < 0.08 || isChoppy) && ema9 < ema21) {
             volScore.down += 2.5;
             brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
-            if (currentClose > sma) {
-                volScore.down += 2.5;
-                brainText.push("Price is floating above the Moving Average, forcing a counter-structural downcall.");
-            }
+            if (currentClose > sma) volScore.down += 2.5;
         } else {
             brainText.push("Market is showing structural momentum, engaging Trend analysis.");
-
-            if (ema9 > ema21) { 
-                trendScore.up += 1.0;
-                brainText.push("Fast EMA(9) leads Slow EMA(21) (Bullish configuration).");
-            }
-            if (ema9 < ema21) { 
-                trendScore.down += 1.0;
-                brainText.push("Fast EMA(9) trails Slow EMA(21) (Bearish configuration)."); 
-            }
+            if (ema9 > ema21) trendScore.up += 1.0;
+            if (ema9 < ema21) trendScore.down += 1.0; 
             
-            if (currentMACD > currentSignal && currentHist > prevHist) { 
-                trendScore.up += 3.0;
-                brainText.push("MACD histogram is expanding upward, displaying strong structural expansion.");
-            }
-            if (currentMACD < currentSignal && currentHist < prevHist) { 
-                trendScore.down += 3.0;
-                brainText.push("MACD histogram is expanding downward, displaying strong structural compression.");
-            }
+            if (currentMACD > currentSignal && currentHist > prevHist) trendScore.up += 3.0;
+            if (currentMACD < currentSignal && currentHist < prevHist) trendScore.down += 3.0;
             
             if (roc3 > 0.15) trendScore.up += 3.0;
             if (roc3 < -0.15) trendScore.down += 3.0; 
 
-            // CATEGORY 4: Candlestick Price Action Patterns
+            // Candlesticks
             if (upperWick > bodySize * 2) { 
                 patternScore.down += 3.5;
                 brainText.push("Spotted a long upper wick on the previous candle, predicting supply overhead.");
@@ -530,71 +462,48 @@ async function generatePrediction(targetEpoch) {
                 brainText.push("Spotted a long lower wick on the previous candle, predicting clear demand protection.");
             }
 
-            // Bollinger Band Extreme Overrides
-            if (currentClose > upperBB && rsi > 72) { 
-                volScore.down += 4.5;
-                brainText.push("Price pierced the Upper Bollinger Band with overextended RSI. Overrides forced a downward bias.");
-            }
-            if (currentClose < lowerBB && rsi < 28) { 
-                volScore.up += 4.5;
-                brainText.push("Price pierced the Lower Bollinger Band with crushed RSI. Overrides forced an upward bias.");
-            }
+            // BB Extreme Overrides
+            if (currentClose > upperBB && rsi > 72) volScore.down += 4.5;
+            if (currentClose < lowerBB && rsi < 28) volScore.up += 4.5;
         }
 
-        // --- APPLY CATEGORICAL CAPS ---
-        historyScore.up = Math.min(historyScore.up, 2.5);
-        historyScore.down = Math.min(historyScore.down, 2.5);
+        // Caps
+        historyScore.up = Math.min(historyScore.up, 2.5); historyScore.down = Math.min(historyScore.down, 2.5);
+        trendScore.up = Math.min(trendScore.up, 4.5); trendScore.down = Math.min(trendScore.down, 4.5);
+        volScore.up = Math.min(volScore.up, 5.0); volScore.down = Math.min(volScore.down, 5.0);
+        patternScore.up = Math.min(patternScore.up, 3.5); patternScore.down = Math.min(patternScore.down, 3.5);
 
-        trendScore.up = Math.min(trendScore.up, 4.5);
-        trendScore.down = Math.min(trendScore.down, 4.5);
-
-        volScore.up = Math.min(volScore.up, 5.0);
-        volScore.down = Math.min(volScore.down, 5.0);
-        patternScore.up = Math.min(patternScore.up, 3.5);
-        patternScore.down = Math.min(patternScore.down, 3.5);
-
-        // Aggregate scores
         upScore = historyScore.up + trendScore.up + volScore.up + patternScore.up;
         downScore = historyScore.down + trendScore.down + volScore.down + patternScore.down;
 
         let netScore = Math.abs(upScore - downScore);
         if (isNaN(netScore)) netScore = 0;
 
-        // Tie-breaker
         if (upScore === downScore) {
-            brainText.push("Data is perfectly tied. Using directional EMA trend alignment as the structural tie-breaker.");
-            if (ema9 >= ema21) { upScore += 1.5; } else { downScore += 1.5; }
+            brainText.push("Data is perfectly tied. Using directional EMA trend alignment as the tie-breaker.");
+            if (ema9 >= ema21) upScore += 1.5; else downScore += 1.5;
             netScore = Math.abs(upScore - downScore);
         }
         
         let currentPred = (upScore > downScore) ? "UP" : "DOWN";
-        brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${currentPred}.`);
-        console.log(`📊 Category Breakdown [Target #${targetEpoch}] -> History: U:${historyScore.up}/D:${historyScore.down} | Trend: U:${trendScore.up}/D:${trendScore.down} | Volatility/BB: U:${volScore.up}/D:${volScore.down} | Patterns: U:${patternScore.up}/D:${patternScore.down}`);
-
+        brainText.push(`Conclusion: Aggregate technical weight firmly favors ${currentPred}.`);
+        console.log(`📊 Scan -> His: U:${historyScore.up}/D:${historyScore.down} | Trnd: U:${trendScore.up}/D:${trendScore.down} | Vol: U:${volScore.up}/D:${volScore.down} | Pat: U:${patternScore.up}/D:${patternScore.down}`);
+        
         const ThoughtProcess = brainText.join(" ");
         let numericConfidence = Math.min(92.0, 60 + (netScore * 2.5));
-        let finalConfidence = numericConfidence.toFixed(1) + "%";
-        let displayConf = finalConfidence;
+        let displayConf = numericConfidence.toFixed(1) + "%";
         
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
         if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
-        let laterDownProb = 100 - laterUpProb;
-
+        
         let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
-        let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
+        let laterMajorityProb = Math.max(laterUpProb, 100 - laterUpProb).toFixed(1);
         console.log(`🔥 Live Scan Update! Direction: ${currentPred} | current_conf: ${displayConf}`);
         
         memoryStore[`best_${targetEpoch}`] = {
-            current_pred: currentPred,
-            current_conf: displayConf,
-            numeric: (numericConfidence - 1),
-            later_pred: laterPred,
-            later_conf: laterMajorityProb,
-            rsi: rsi,
-            macd: currentMACD,
-            price: currentClose,
-            thought_process: ThoughtProcess
+            current_pred: currentPred, current_conf: displayConf, numeric: (numericConfidence - 1),
+            later_pred: laterPred, later_conf: laterMajorityProb, rsi: rsi, macd: currentMACD, price: currentClose, thought_process: ThoughtProcess
         };
 
         await updateMarketStats(rsi, currentMACD, currentClose, currentPred, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
@@ -602,13 +511,14 @@ async function generatePrediction(targetEpoch) {
         console.error("Brain Failed:", e);
     }
 }
+
 async function lockInPrediction(targetEpoch) {
     const bestData = memoryStore[`best_${targetEpoch}`];
     if (!bestData || bestData.numeric === -1) return;
-
+    
     memoryStore[`locked_${targetEpoch}`] = true;
     console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.current_pred} (${bestData.current_conf})`);
-
+    
     if (bestData.numeric >= 75.0) {
         const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
         fetch(webhookUrl, {
@@ -621,16 +531,16 @@ async function lockInPrediction(targetEpoch) {
         }).catch(err => console.error("Failed to send webhook:", err));
     }
     
+    // UPGRADE 4: Saving thought_process to Supabase for Whiff Tracking
     const { error } = await supabaseClient.from('prediction_logs').upsert([{ 
         epoch_id: targetEpoch, 
         predicted_side: bestData.current_pred, 
         result: 'PENDING',
         confidence: bestData.current_conf,
-        is_locked: true,        
-    }], { 
-        onConflict: 'epoch_id' 
-    });
-
+        is_locked: true,
+        thought_process: bestData.thought_process // Saving the log to find out why it failed
+    }], { onConflict: 'epoch_id' });
+    
     if (error) console.error("❌ Early Supabase insert error:", error);
     await updateMarketStats(bestData.rsi, bestData.macd, bestData.price, "NONE", "Calculating...", bestData.later_pred, bestData.later_conf, bestData.thought_process);
 }
@@ -644,63 +554,43 @@ async function verifyResult(epochToCheck) {
         const closePrice = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
         
         let actualResult;
-        if (closePrice === lockPrice) {
-            actualResult = "TIE";
-        } else {
-            actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
-        }
+        if (closePrice === lockPrice) actualResult = "TIE";
+        else actualResult = closePrice > lockPrice ? "UP" : "DOWN"; 
         
-        const { data, error: fetchError } = await supabaseClient
-            .from('prediction_logs')
-            .select('*')
-            .eq('epoch_id', epochToCheck)
-            .single();
-
+        const { data, error: fetchError } = await supabaseClient.from('prediction_logs').select('*').eq('epoch_id', epochToCheck).single();
+        
         if (fetchError || !data) return;
         if (data.result !== 'PENDING') return;
         
         let resultStatus;
-        if (actualResult === "TIE") {
-            resultStatus = "TIE";
-        } else if (data.predicted_side.startsWith("SKIP")) {
-            resultStatus = "SKIP/" + actualResult;
-        } else {
-            resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
-        }
+        if (actualResult === "TIE") resultStatus = "TIE";
+        else if (data.predicted_side.startsWith("SKIP")) resultStatus = "SKIP/" + actualResult;
+        else resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
 
         console.log(`\n⚖️ [Epoch ${epochToCheck}] Resolving... Result: ${resultStatus}`);
-
-        const { error: updateError } = await supabaseClient
-            .from('prediction_logs')
-            .update({ result: resultStatus })
-            .eq('epoch_id', epochToCheck);
-
-        if (updateError) {
-            console.error(`❌ Supabase Update Error for Epoch ${epochToCheck}:`, updateError.message);
-            return;
+        
+        // UPGRADE 5: Console Alert for Whiff Rate Auditing
+        if (resultStatus === "LOSS" && data.thought_process) {
+            console.log(`\n--- 🕵️ WHIFF AUDIT LOG [Epoch ${epochToCheck}] ---`);
+            console.log(`Prediction: ${data.predicted_side} | Actual: ${actualResult}`);
+            console.log(`What went wrong: ${data.thought_process}`);
+            console.log(`----------------------------------------\n`);
         }
 
-        const { data: recentLogs } = await supabaseClient
-            .from('prediction_logs')
-            .select('result, confidence')
-            .in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'])
-            .order('epoch_id', { ascending: false })
-            .limit(15);
+        const { error: updateError } = await supabaseClient.from('prediction_logs').update({ result: resultStatus }).eq('epoch_id', epochToCheck);
+        if (updateError) { console.error(`❌ Supabase Update Error:`, updateError.message); return; }
 
+        const { data: recentLogs } = await supabaseClient.from('prediction_logs').select('result, confidence').in('result', ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN']).order('epoch_id', { ascending: false }).limit(15);
         if (recentLogs && recentLogs.length > 0) {
             const mixedWins = recentLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-            const mixedRate = ((mixedWins / recentLogs.length) * 100).toFixed(1);
-
             const trendLogs = recentLogs.filter(l => {
                 const match = l.confidence.match(/(\d+(?:\.\d+)?)/);
                 return match ? parseFloat(match[1]) >= 55.0 : false;
             });
-
             const trendWins = trendLogs.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
-            const trendRate = trendLogs.length > 0 ? ((trendWins / trendLogs.length) * 100).toFixed(1) : "0.0";
 
-            console.log(`📈 Mixed Market (Overall Average): ${mixedRate}%`);
-            console.log(`🚀 Trend Market (Conviction > 55%): ${trendRate}%`);
+            console.log(`📈 Mixed Market: ${((mixedWins / recentLogs.length) * 100).toFixed(1)}%`);
+            console.log(`🚀 Trend Market: ${trendLogs.length > 0 ? ((trendWins / trendLogs.length) * 100).toFixed(1) : "0.0"}%`);
         }
     } catch(e) { 
         console.error("Result Verification Failed:", e);
