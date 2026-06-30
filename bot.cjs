@@ -396,7 +396,9 @@ async function generatePrediction(targetEpoch) {
         let bbWidth = (upperBB - lowerBB) / sma;
         let isChoppy = bbWidth < 0.0015;
 
-        if (atrPercentage < 0.05 || isChoppy) {
+            if ((atrPercentage < 0.05 || isChoppy) && ema9 > ema21) { 
+                upScore += 2.5; 
+            }
             brainText.push("Volatility is extremely low, executing a Mean-Reversion selection.");
             if (currentClose < sma) {
                 upScore += 2.5;
