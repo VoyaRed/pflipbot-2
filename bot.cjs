@@ -45,9 +45,13 @@ async function findFastestRPC() {
     throw new Error("All RPC nodes failed.");
 }
 
+const { refreshProxyPool } = require('./proxyHelper.js');
+
+
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
     try {
+        await refreshProxyPool();
         const fastest = await findFastestRPC();
         provider = fastest.provider; 
         contract = fastest.contract;
@@ -183,6 +187,8 @@ async function updateMarketStats(rsi, macd, price, currentPred = "NONE", current
     if (error) console.error("Error updating stats:", error);
 }
 
+const { getRandomProxy, banProxy } = require('./proxyHelper.js');
+
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
@@ -193,11 +199,10 @@ async function generatePrediction(targetEpoch) {
         let candles = null;
         
         for (let i = 0; i < 3; i++) {
+            // 1. Extract both the operational agent and the raw proxy string
+            const { agent, url } = getRandomProxy();
+            
             try {
-                // 1. Grab a fresh proxy on EVERY attempt
-                const agent = getRandomProxyAgent();
-                
-                // 2. Build the options inside the loop so the new agent is attached
                 const options = {
                     method: 'GET',
                     ...(agent && { agent }),
@@ -205,8 +210,14 @@ async function generatePrediction(targetEpoch) {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                         'Accept': 'application/json'
                     },
-                    timeout: 15000 
+                    timeout: 8000 // Slightly lower timeout so bad proxies fail quickly
                 };
+
+                if (url) {
+                    console.log(`[Attempt ${i+1}] Routing via: ${url}`);
+                } else {
+                    console.warn(`[Attempt ${i+1}] Proxy pool empty! Attempting direct connection.`);
+                }
 
                 const res = await fetch(targetUrl, options);
                 
@@ -214,23 +225,25 @@ async function generatePrediction(targetEpoch) {
                     const data = await res.json();
                     if (Array.isArray(data) && data.length >= 50) {
                         candles = data;
-                        break; // Success! Break out of the retry loop.
+                        break; // Found working data, exit loop immediately
                     }
                 } else {
-                    console.warn(`Attempt ${i+1}: Proxy/Binance returned status ${res.status}`);
+                    console.warn(`Attempt ${i+1}: Received bad status code ${res.status}. Dropping proxy.`);
+                    banProxy(url); // Remove poorly performing IP from rotation
                 }
             } catch (e) {
-                console.warn(`Attempt ${i+1}: Proxy fetch error: ${e.message}`);
+                console.warn(`Attempt ${i+1} Failure (${e.message}). Dropping proxy.`);
+                banProxy(url); // Remove dead/timed-out IP from rotation
             }
             
-            // Wait 3 seconds before trying the next proxy in the pool
+            // Wait 1.5 seconds before hitting the next proxy in the pool
             if (!candles) {
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 1500));
             }
         }
 
         if (!candles) {
-            throw new Error("Proxy pool failed to return valid Binance data after 3 retries.");
+            throw new Error("Proxy pool exhausted or all selection attempts timed out.");
         }
         
         const opens = candles.map(c => parseFloat(c));
