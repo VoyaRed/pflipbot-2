@@ -100,9 +100,6 @@ async function findFastestRPC() {
 let isInitialFetchDone = false;
 let binanceSleepUntil = 0; 
 
-let isInitialFetchDone = false;
-let binanceSleepUntil = 0; 
-
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
 
