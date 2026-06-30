@@ -34,6 +34,10 @@ let localCandles = [];
 let isInitialFetchDone = false;
 let binanceSleepUntil = 0; 
 
+// NEW: Error tracking for Exponential Backoff
+let consecutiveLoopErrors = 0; 
+let startBotErrorCount = 0;
+
 // WebSocket Stream Manager
 function startCandleStream() {
     const wsUrl = 'wss://stream.binance.com:9443/ws/bnbusdt@kline_5m';
@@ -114,7 +118,6 @@ async function startBot() {
         await exchange.loadMarkets();
         
         console.log("Fetching initial 1000 candles...");
-        // Fetch REST candles (Note: Standard CCXT format does not include Taker Buy Volume, our logic handles this gracefully)
         localCandles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
         startCandleStream(); 
         isInitialFetchDone = true;
@@ -123,21 +126,23 @@ async function startBot() {
         provider = fastest.provider;
         contract = fastest.contract;
 
+        // Reset the startBot error count upon a successful boot
+        startBotErrorCount = 0; 
+
         console.log("✅ Connected to BSC successfully.");
         runLoop();
     } catch (error) {
         if (error.message.includes('418') || error.message.includes('429')) {
+            // ... (Keep your existing Ban Header logic here exactly as it was) ...
             let sleepDurationMs = 5 * 60 * 1000;
             let penaltySource = "Default Fallback";
 
             const banMatch = error.message.match(/banned until (\d+)/);
-
             if (banMatch && banMatch[1]) {
                 const banLiftTimestampMs = parseInt(banMatch[1], 10);
                 const bufferMs = 5000; 
                 sleepDurationMs = (banLiftTimestampMs - Date.now()) + bufferMs;
                 penaltySource = "Binance Error Timestamp (+ 5s buffer)";
-
                 if (sleepDurationMs <= 0) {
                     sleepDurationMs = 5 * 60 * 1000;
                     penaltySource = "Default Fallback (Timestamp was in the past)";
@@ -164,8 +169,15 @@ async function startBot() {
             console.error(`   -> Entering Sleep Mode for ${sleepMinutes} minutes.`);
             setTimeout(startBot, sleepDurationMs);
         } else {
-            console.error(`❌ Initialization failed (Error: ${error.message}). Retrying in 10s...`);
-            setTimeout(startBot, 10000);
+            // NEW: Exponential Backoff for general initialization errors (502s, timeouts, etc.)
+            startBotErrorCount++;
+            
+            // 10s -> 20s -> 40s -> 80s -> Max 5 minutes (300,000ms)
+            const fallbackDelayMs = Math.min(10000 * Math.pow(2, startBotErrorCount), 300000); 
+            
+            console.error(`❌ Initialization failed (Error: ${error.message}).`);
+            console.error(`   -> Applying backoff penalty. Retrying in ${fallbackDelayMs / 1000}s...`);
+            setTimeout(startBot, fallbackDelayMs);
         }
     }
 }
@@ -173,10 +185,22 @@ async function startBot() {
 async function runLoop() {
     try {
         await checkRound();
+        
+        // If successful, reset the error counter back to zero
+        consecutiveLoopErrors = 0; 
+        
+        // Standard 2-second interval when healthy
+        setTimeout(runLoop, 2000); 
     } catch (error) {
-        console.warn("Loop error:", error.message);
+        consecutiveLoopErrors++;
+        console.warn(`Loop error: ${error.message}`);
+        
+        // EXPONENTIAL BACKOFF: 2s -> 4s -> 8s -> 16s -> 32s -> max 60s
+        const delayMs = Math.min(2000 * Math.pow(2, consecutiveLoopErrors), 60000);
+        
+        console.warn(`⚠️ RPC/Network hiccup detected. Applying backoff to prevent spam. Retrying in ${delayMs / 1000} seconds...`);
+        setTimeout(runLoop, delayMs);
     }
-    setTimeout(runLoop, 2000);
 }
 
 async function checkRound() {
