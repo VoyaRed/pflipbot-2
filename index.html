@@ -474,27 +474,27 @@
                 if (data.test_mode) {
                     if (!document.body.classList.contains('test-mode-active')) {
                         document.body.classList.add('test-mode-active');
-                        themeBtn.innerText = "🔒 SYSTEM LOCKED";
+                        themeBtn.innerText = "🔒 SIMULATION ACTIVE";
                         themeBtn.style.opacity = "0.5";
                         themeBtn.style.cursor = "not-allowed";
                         initTradingView();
                     }
-            // Change the heading to Test Price
-            if (headingEl) headingEl.innerText = "Test Price";
-            
-            // Sync the main price display to the exact price the bot used for its calculation
-            if (lastPriceEl && data.price) {
-                lastPriceEl.innerText = '$' + Number(data.price).toFixed(4);
-                lastPriceEl.className = 'main-price waiting'; 
-            }
-        } else {
-                    if (headingEl) headingEl.innerText = "🔮 KNOWN FUTURE CLOSE";
                     
-                    // The backend snuck the known future price and outcome into the later_conf string variable!
-                    if (lastPriceEl && data.later_conf && data.later_conf.includes("$")) {
-                        lastPriceEl.innerText = data.later_conf;
-                        lastPriceEl.className = data.later_conf.includes("(Bot WIN)") || data.later_conf.includes("(WIN)") ? 'main-price up' : 'main-price down';
+                    // Change the heading to reflect we are looking at the past
+                    if (headingEl) headingEl.innerText = "Simulated Market Price";
+                    
+                    // Inject the exact historical candle close into the main price display!
+                    if (lastPriceEl && data.price) {
+                        lastPriceEl.innerText = '$' + Number(data.price).toFixed(4);
+                        
+                        // Keep the colors working based on the historical lock price (if we have one)
+                        if (lastLockedPrice > 0) {
+                            lastPriceEl.className = Number(data.price) >= lastLockedPrice ? 'main-price up' : 'main-price down';
+                        } else {
+                            lastPriceEl.className = 'main-price waiting';
+                        }
                     }
+                    
                 } else {
                     if (document.body.classList.contains('test-mode-active')) {
                         document.body.classList.remove('test-mode-active');
@@ -550,7 +550,7 @@
                     laterBadge.innerText = `${data.later_pred} ${data.later_conf || 0}%`;
                     laterBadge.className = `prediction-badge pred-${String(data.later_pred).toLowerCase()}`;
                 } else if (data.test_mode && laterBadge) {
-                    // Hide the standard "Later" estimation during time machine active states as it's hijacked
+                    // Hide the standard "Later" estimation during time machine active states
                     laterBadge.innerText = "TEST OVERRIDE";
                     laterBadge.className = `prediction-badge pred-waiting`;
                 }
