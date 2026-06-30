@@ -435,16 +435,16 @@
                 let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
                 
                 // 1. Display the actual number/text on the screen
-                macdEl.textContent = data.macd; 
+                macdEl.textContent = Number(data.macd).toFixed(2); 
                 
                 // 2. Apply the color you calculated to the element's style
-                macdEl.style.color = macdColor; 
+                macdEl.style.color = macdColor;
             }     
             
             // Update RSI
             if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
                 // Display the RSI text on the screen
-                rsiEl.textContent = data.rsi;
+                rsiEl.textContent = Number(data.rsi).toFixed(2);
             }
         }  
 
