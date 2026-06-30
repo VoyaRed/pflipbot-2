@@ -104,30 +104,37 @@ async function findFastestRPC() {
 }
 
 // --- NEW: TradingView Signal Fetcher ---
+// --- REPLACEMENT: TradingView Signal Fetcher (No NPM dependency needed) ---
 async function getTVSignals() {
     try {
-        const setup = { symbol: "BNBUSDT", exchange: "BINANCE", screener: "CRYPTO" };
-        
-        // Fetch 1-Minute and 5-Minute Signals
-        const tv1m = new TA_Handler({ ...setup, interval: Interval.1m });
-        const tv5m = new TA_Handler({ ...setup, interval: Interval.5m });
-
-        const [res1m, res5m] = await Promise.all([tv1m.getAnalysis(), tv5m.getAnalysis()]);
-
-        const minRec = res1m.summary;
-        const medRec = res5m.summary;
-
-        // Average the BUY and SELL signals like the Python script
-        const averageBuy = (minRec.BUY + medRec.BUY) / 2;
-        const averageSell = (minRec.SELL + medRec.SELL) / 2;
-
-        return {
-            buy: averageBuy,
-            sell: averageSell,
-            total: averageBuy + averageSell
+        // TradingView's official public scan endpoint
+        const url = "https://scanner.tradingview.com/crypto/scan";
+        const payload = {
+            symbols: { tickers: ["BINANCE:BNBUSDT"], query: { types: ["crypto"] } },
+            columns: ["Recommend.1m", "Recommend.5m"]
         };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+        const results = data.data[0].d;
+
+        // Recommendations are returned as a float between -1 (Strong Sell) and 1 (Strong Buy)
+        // We map these to simple counts for your scoring logic
+        const rec1m = results[0];
+        const rec5m = results[1];
+
+        // Scoring: If > 0.2 it's leaning buy, < -0.2 is leaning sell
+        const buySignals = (rec1m > 0.2 ? 1 : 0) + (rec5m > 0.2 ? 1 : 0);
+        const sellSignals = (rec1m < -0.2 ? 1 : 0) + (rec5m < -0.2 ? 1 : 0);
+
+        return { buy: buySignals, sell: sellSignals, total: 2 };
     } catch (error) {
-        console.warn("⚠️ TradingView Signal fetch failed, skipping TV score this round.");
+        console.warn("⚠️ Direct TradingView API fetch failed, skipping TV score.");
         return null;
     }
 }
