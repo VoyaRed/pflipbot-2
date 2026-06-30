@@ -97,17 +97,29 @@ async function findFastestRPC() {
     throw new Error("All RPC nodes failed.");
 }
 
+let isInitialFetchDone = false;
+let binanceSleepUntil = 0; 
+
 async function startBot() {
     console.log("🍰 UpsideDownCake 24/7 Engine Starting...");
+
+    // Prevent execution if the bot is currently in Sleep Mode
+    if (Date.now() < binanceSleepUntil) {
+        const remainingTime = Math.ceil((binanceSleepUntil - Date.now()) / 1000);
+        console.log(`💤 Bot is in Sleep Mode. Skipping initialization. Waking up in ${remainingTime}s...`);
+        
+        setTimeout(startBot, 10000);
+        return;
+    }
+
     try {
-        // <-- NEW: Load markets once on startup to completely kill the 429 error
         console.log("Loading Binance markets to prevent rate limits...");
         await exchange.loadMarkets();
         
-        // <-- NEW: Fetch initial 1000 candles for our EMA math, then let WS take over
         console.log("Fetching initial 1000 candles...");
         localCandles = await exchange.fetchOHLCV('BNB/USDT', '5m', undefined, 1000);
         startCandleStream(); 
+        isInitialFetchDone = true;
 
         const fastest = await findFastestRPC();
         provider = fastest.provider;
@@ -116,11 +128,45 @@ async function startBot() {
         console.log("✅ Connected to BSC successfully.");
         runLoop();
     } catch (error) {
-        // If we see a 418, we know we are BANNED. 
-        // We should wait significantly longer (e.g., 60 seconds) before trying again.
-        const waitTime = error.message.includes('418') ? 60000 : 10000;
-        console.error(`❌ Initialization failed (Error: ${error.message}). Retrying in ${waitTime/1000}s...`);
-        setTimeout(startBot, waitTime);
+        if (error.message.includes('418') || error.message.includes('429')) {
+            // 1. Establish a default penalty fallback (e.g., 5 minutes) just in case headers are missing
+            let sleepDurationMs = 5 * 60 * 1000; 
+            let penaltySource = "Default Fallback";
+
+            // 2. Attempt to extract headers from the error object
+            // This covers Axios (error.response.headers) and CCXT (error.responseHeaders)
+            const headers = error.response?.headers || error.responseHeaders;
+            
+            if (headers) {
+                // Handle both Fetch API (.get) and raw objects ([])
+                const rawHeader = typeof headers.get === 'function' 
+                    ? headers.get('retry-after') || headers.get('Retry-After')
+                    : headers['retry-after'] || headers['Retry-After'];
+                    
+                if (rawHeader) {
+                    const retrySeconds = parseInt(rawHeader, 10);
+                    if (!isNaN(retrySeconds)) {
+                        // Binance sends Retry-After in seconds; convert to MS
+                        sleepDurationMs = retrySeconds * 1000;
+                        penaltySource = "Exact Binance Header";
+                    }
+                }
+            }
+
+            // 3. Apply the sleep duration globally
+            binanceSleepUntil = Date.now() + sleepDurationMs;
+            const sleepMinutes = (sleepDurationMs / 1000 / 60).toFixed(2);
+
+            console.error(`🚨 Binance Ban/Rate Limit Detected!`);
+            console.error(`   -> Source: ${penaltySource}`);
+            console.error(`   -> Entering Sleep Mode for ${sleepMinutes} minutes.`);
+
+            // 4. Schedule the wake-up
+            setTimeout(startBot, sleepDurationMs);
+        } else {
+            console.error(`❌ Initialization failed (Error: ${error.message}). Retrying in 10s...`);
+            setTimeout(startBot, 10000);
+        }
     }
 }
 
