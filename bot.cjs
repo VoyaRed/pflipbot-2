@@ -4,7 +4,6 @@ const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const ccxt = require('ccxt'); 
 const WebSocket = require('ws'); // <-- NEW: Imported WebSocket library
-const { TA_Handler, Interval, Exchange } = require('tradingview-ta'); // <-- NEW: TradingView Screener
 
 // --- CONFIG ---
 const GLOBAL_CONFIG = {
