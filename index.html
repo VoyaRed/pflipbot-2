@@ -431,22 +431,22 @@
         const macdEl = document.getElementById('macd');
         
         // Update MACD
-        if (macdEl && data.macd !== null && data.macd !== undefined) {
-            let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
+            if (macdEl && data.macd !== null && data.macd !== undefined) {
+                let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
+                
+                // 1. Display the actual number/text on the screen
+                macdEl.textContent = data.macd; 
+                
+                // 2. Apply the color you calculated to the element's style
+                macdEl.style.color = macdColor; 
+            }     
             
-            // 1. Display the actual number/text on the screen
-            macdEl.textContent = data.macd; 
-            
-            // 2. Apply the color you calculated to the element's style
-            macdEl.style.color = macdColor; 
-        }     
-        
-        // Update RSI
-        if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
-            // Display the RSI text on the screen
-            rsiEl.textContent = data.rsi;
-        }
-    }  
+            // Update RSI
+            if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
+                // Display the RSI text on the screen
+                rsiEl.textContent = data.rsi;
+            }
+        }  
 
                 const thoughtEl = document.getElementById('bot-thoughts');
                 const timeEl = document.getElementById('thought-timestamp');
@@ -479,7 +479,7 @@
                     laterBadge.className = `prediction-badge pred-${String(data.later_pred).toLowerCase()}`;
                 }
             }
-        }
+        
         
         function startTimer(targetTimestamp) {
             clearInterval(timerInterval);
