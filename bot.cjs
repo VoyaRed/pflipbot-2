@@ -192,7 +192,7 @@ async function generatePrediction(targetEpoch) {
         const PROXY_URL = process.env.PROXY_URL;
         
         // Target Binance API
-        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=900`;
+        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=1000`;
         
         // ScrapingBee configuration - Using 'render_js=false' to make it faster
         // Using 'premium_proxy=true' is often required for Binance/Geo-restricted sites
@@ -427,24 +427,28 @@ async function generatePrediction(targetEpoch) {
         if (currentHist > 0 && prevHist > 0) confluencePoints += 1; // MACD Trend
         if (currentClose > ema21) confluencePoints += 1; // EMA Trend
         
-        // Only enter if confluence is high
+        // 1. Calculate base direction FIRST so we can use it for SKIP/(direction)
+        if (upScore === downScore) {
+            brainText.push("Data is tied. Using EMA trend alignment as the final tie-breaker.");
+            if (ema9 >= ema21) { upScore += 1.5; } else { downScore += 1.5; }
+            netScore = Math.abs(upScore - downScore);
+        }
+        let baseDirection = (upScore > downScore) ? "UP" : "DOWN";
+
+        // 2. Only enter if confluence is high
         if (confluencePoints < 2) {
-            prediction = "SKIP";
-            brainText.push("Insufficient confluence (Score: " + confluencePoints + "/4). Skipping to stay safe.");
+            forceSkip = true; // THIS PREVENTS THE OVERWRITE BUG
+            prediction = `SKIP/${baseDirection}`;
+            brainText.push(`Insufficient confluence (Score: ${confluencePoints}/4). Skipping to stay safe.`);
         }
         
-        // Only run the final prediction assignment if we aren't forcing a skip
+        // 3. Only run the final prediction assignment if we aren't forcing a skip
         if (!forceSkip) {
             if ((atrPercentage < 0.04 || bbWidth < 0.0012) && netScore <= 2.0) {
-                prediction = "SKIP";
+                prediction = `SKIP/${baseDirection}`;
                 brainText.push("Conclusion: Signals are heavily mixed and price action is practically frozen. Initiating a SKIP to preserve capital.");
             } else {
-                if (upScore === downScore) {
-                    brainText.push("Data is tied. Using EMA trend alignment as the final tie-breaker.");
-                    if (ema9 >= ema21) { upScore += 1.5; } else { downScore += 1.5; }
-                    netScore = Math.abs(upScore - downScore);
-                }
-                prediction = (upScore > downScore) ? "UP" : "DOWN";
+                prediction = baseDirection;
                 brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
             }
         }
@@ -454,7 +458,7 @@ async function generatePrediction(targetEpoch) {
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         let displayConf = finalConfidence;
         
-        if (prediction === "SKIP") {
+        if (prediction.startsWith("SKIP")) {
             let tryPred = (ema9 >= ema21) ? "UP" : "DOWN"; 
             displayConf = `SKIP (Try: ${tryPred} ${finalConfidence})`;
         }
@@ -547,7 +551,7 @@ async function verifyResult(epochToCheck) {
         let resultStatus;
         if (actualResult === "TIE") {
             resultStatus = "TIE";
-        } else if (data.predicted_side === "SKIP") {
+        } else if (data.predicted_side.startsWith("SKIP")) {
             resultStatus = "SKIP/" + actualResult;
         } else {
             resultStatus = (data.predicted_side === actualResult) ? "WIN" : "LOSS"; 
