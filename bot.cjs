@@ -93,8 +93,8 @@ async function checkRound() {
             console.log(`⏳ Epoch #${currentEpoch} just started. Sleeping until 102s mark...`);
             let lastAnalysis = "";
             const lastData = memoryStore[`best_${currentEpoch - 1}`];
-            if (lastData && lastData.thoughtProcess) {
-                lastAnalysis = `\n\n--- LAST MARKET ANALYSIS ---\n${lastData.thoughtProcess}`;
+            if (lastData && lastData.thought_process) {
+                lastAnalysis = `\n\n--- LAST MARKET ANALYSIS ---\n${lastData.thought_process}`;
             }
 
             await supabaseClient
@@ -124,15 +124,15 @@ async function checkRound() {
         if (!memoryStore[`best_${currentEpoch}`]) {
             console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback direction prediction.`);
             memoryStore[`best_${currentEpoch}`] = {
-                pred: "DOWN", // Default fallback direction
-                conf: "Failsafe Fallback",
+                current_pred: "DOWN", // Default fallback direction
+                current_conf: "Failsafe Fallback",
                 numeric: 50,
-                laterPrediction: "NONE",
-                laterMajorityProb: "0%",
+                later_pred: "NONE",
+                later_conf: "0%",
                 rsi: 50,
-                currentMACD: 0,
-                currentClose: 0,
-                thoughtProcess: "Emergency Fallback: Binance data retrieval timed out before lock."
+                macd: 0,
+                price: 0,
+                thought_process: "Emergency Fallback: Binance data retrieval timed out before lock."
             };
         }
         
@@ -159,14 +159,14 @@ async function checkRound() {
     }
 }
 
-async function updateMarketStats(rsi, macd, price, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%", thoughtProcess = "") {
+async function updateMarketStats(rsi, currentMACD, currentClose, currentPred = "NONE", currentConf = "0%", laterPred = "NONE", laterConf = "0%", thoughtProcess = "") {
     const { error } = await supabaseClient
         .from('market_stats')
         .upsert([{ 
             id: 1, 
             rsi: rsi, 
-            macd: macd, 
-            price: price,
+            macd: currentMACD, 
+            price: currentClose,
             current_pred: currentPred,
             current_conf: currentConf,
             later_pred: laterPred,
@@ -371,7 +371,7 @@ async function generatePrediction(targetEpoch) {
         let prediction = (upScore > downScore) ? "UP" : "DOWN";
         brainText.push(`Conclusion: The aggregate weight of the technical data firmly favors ${prediction}.`);
         
-        const finalThoughtProcess = brainText.join(" ");
+        const ThoughtProcess = brainText.join(" ");
         let numericConfidence = Math.min(99.1, 55 + (netScore * 4.0));
         let finalConfidence = numericConfidence.toFixed(1) + "%";
         let displayConf = finalConfidence;
@@ -381,23 +381,23 @@ async function generatePrediction(targetEpoch) {
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
         let laterDownProb = 100 - laterUpProb;
         
-        let laterPrediction = laterUpProb > 50 ? "UP" : "DOWN";
+        let laterPred = laterUpProb > 50 ? "UP" : "DOWN";
         let laterMajorityProb = Math.max(laterUpProb, laterDownProb).toFixed(1);
-        console.log(`🔥 Live Scan Update! Direction: ${prediction} | Conf: ${displayConf}`);
+        console.log(`🔥 Live Scan Update! Direction: ${prediction} | current_conf: ${displayConf}`);
         
         memoryStore[`best_${targetEpoch}`] = {
-            pred: prediction,
-            conf: displayConf,
+            current_pred: prediction,
+            current_conf: displayConf,
             numeric: (numericConfidence - 1),
-            laterPrediction: laterPrediction,
-            laterMajorityProb: laterMajorityProb,
+            later_pred: laterPred,
+            later_conf: laterMajorityProb,
             rsi: rsi,
-            currentMACD: currentMACD,
-            currentClose: currentClose,
-            thoughtProcess: finalThoughtProcess
+            macd: currentMACD,
+            price: currentClose,
+            thought_process: ThoughtProcess
         };
         
-        await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPrediction, laterMajorityProb, finalThoughtProcess);
+        await updateMarketStats(rsi, currentMACD, currentClose, prediction, displayConf, laterPred, laterMajorityProb, ThoughtProcess);
     } catch (e) {
         console.error("Brain Failed:", e);
     }
@@ -408,7 +408,7 @@ async function lockInPrediction(targetEpoch) {
     if (!bestData || bestData.numeric === -1) return;
     
     memoryStore[`locked_${targetEpoch}`] = true;
-    console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.pred} (${bestData.conf})`);
+    console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.current_pred} (${bestData.current_conf})`);
     
     if (bestData.numeric >= 75.0) {
         const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
@@ -417,23 +417,23 @@ async function lockInPrediction(targetEpoch) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username: "Cake Alert Bot 🍰",
-                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${bestData.pred}**\nConfidence: **${bestData.conf}**`
+                content: `🚨 **High Confidence Alert!** 🚨\nEpoch: #${targetEpoch}\nPrediction: **${bestData.current_pred}**\nConfidence: **${bestData.current_conf}**`
             })
         }).catch(err => console.error("Failed to send webhook:", err));
     }
     
     const { error } = await supabaseClient.from('prediction_logs').upsert([{ 
         epoch_id: targetEpoch, 
-        predicted_side: bestData.pred, 
+        predicted_side: bestData.current_pred, 
         result: 'PENDING',
-        confidence: bestData.conf,
+        confidence: bestData.current_conf,
         is_locked: true,        
     }], { 
         onConflict: 'epoch_id' 
     });
     
     if (error) console.error("❌ Early Supabase insert error:", error);
-    await updateMarketStats(bestData.rsi, bestData.currentMACD, bestData.currentClose, "NONE", "Calculating...", bestData.laterPrediction, bestData.laterMajorityProb, bestData.thoughtProcess);
+    await updateMarketStats(bestData.rsi, bestData.macd, bestData.price, "NONE", "Calculating...", bestData.later_pred, bestData.later_conf, bestData.thought_process);
 }
 
 async function verifyResult(epochToCheck) {
