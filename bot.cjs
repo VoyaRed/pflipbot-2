@@ -3,6 +3,10 @@ const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 
+//---- PROXY ---
+const { getRandomProxyAgent } = require('./proxyHelper.js');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+
 // --- CONFIG ---
 const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
@@ -184,65 +188,54 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 async function generatePrediction(targetEpoch) {
     try {
         memoryStore[`pred_${targetEpoch}`] = "PENDING";
-        const apiKey = process.env.SCRAPINGBEE_KEY;
-        if (!apiKey) {
-            console.error("❌ CRITICAL: SCRAPINGBEE_KEY environment variable is missing!");
-            return; 
-        }
-        const PROXY_URL = process.env.PROXY_URL;
         
         // Target Binance API
-        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=1000&t=${Date.now()}`;
+        const targetUrl = `https://api.binance.com/api/v3/klines?symbol=BNBUSD&interval=5m&limit=1000`;
         
-        // ScrapingBee configuration - Using 'render_js=false' to make it faster
-        // Using 'premium_proxy=true' is often required for Binance/Geo-restricted sites
- //       const scrapingBeeUrl = `https://app.scrapingbee.com/api/v1/?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render_js=false&premium_proxy=true`;
-        
-//        const options = {
-//            method: 'GET',
-//            headers: {
-//                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-//                'Accept': 'application/json'
-//            },
-//            timeout: 10000 // Increased timeout for proxy latency
-//        };
-
-        const options = {
-            agent: new HttpsProxyAgent(PROXY_URL),
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                'Accept': 'application/json'
-            },
-            timeout: 15000 
-        };
-
         let candles = null;
         
         for (let i = 0; i < 3; i++) {
             try {
+                // 1. Grab a fresh proxy on EVERY attempt
+                const agent = getRandomProxyAgent();
+                
+                // 2. Build the options inside the loop so the new agent is attached
+                const options = {
+                    method: 'GET',
+                    ...(agent && { agent }),
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 15000 
+                };
+
                 const res = await fetch(targetUrl, options);
                 
-                // If the proxy returns 500, we log the status and retry
                 if (res.ok) {
                     const data = await res.json();
                     if (Array.isArray(data) && data.length >= 50) {
                         candles = data;
-                        break; 
+                        break; // Success! Break out of the retry loop.
                     }
                 } else {
-                    console.warn(`Attempt ${i+1}: Proxy returned status ${res.status} - Check ScrapingBee logs`);
+                    console.warn(`Attempt ${i+1}: Proxy/Binance returned status ${res.status}`);
                 }
             } catch (e) {
                 console.warn(`Attempt ${i+1}: Proxy fetch error: ${e.message}`);
             }
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Wait 3 seconds before trying the next proxy in the pool
+            if (!candles) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
         }
 
         if (!candles) {
-            throw new Error("Proxy failed to return valid Binance data after retries.");
+            throw new Error("Proxy pool failed to return valid Binance data after 3 retries.");
         }
         
-        const opens = candles.map(c => parseFloat(c[1]));
+        const opens = candles.map(c => parseFloat(c));
         const highs = candles.map(c => parseFloat(c[2]));
         const lows = candles.map(c => parseFloat(c[3]));
         const closes = candles.map(c => parseFloat(c[4]));
