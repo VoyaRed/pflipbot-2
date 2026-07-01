@@ -10,7 +10,6 @@
     "node-fetch": "^2.6.7"
   },
   "scripts": {
-    "start": "node bot.cjs",
-    "start": "node backtester.cjs"
+    "start": "node bot.cjs"
   }
 }
