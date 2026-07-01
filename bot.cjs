@@ -466,6 +466,7 @@ async function generatePrediction(targetEpoch) {
         let trendScore = { up: 0, down: 0 };
         let volScore = { up: 0, down: 0 };
         let patternScore = { up: 0, down: 0 };
+        let tvScore = { up: 0, down: 0 };
 
         // RSI Exhaustion Penalties
         if (rsiSlope > 0.5) {
