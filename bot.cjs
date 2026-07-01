@@ -2,7 +2,6 @@
 
 
 // --- AT THE VERY TOP ---
-startBot();
 const http = require('http');
 const PORT = process.env.PORT || 10000;
 
@@ -777,3 +776,4 @@ async function verifyResult(epochToCheck) {
         console.error("Result Verification Failed:", e);
     }
 }
+startBot();
