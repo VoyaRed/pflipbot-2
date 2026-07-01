@@ -1,4 +1,18 @@
 // bot.cjs - UpsideDownCake 24/7 Engine 🍰
+
+
+// --- AT THE VERY TOP ---
+const http = require('http');
+const PORT = process.env.PORT || 10000;
+
+// Initialize the server immediately
+http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('Bot is running');
+}).listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ HTTP server listening on port ${PORT}`);
+});
+
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
@@ -762,8 +776,3 @@ async function verifyResult(epochToCheck) {
         console.error("Result Verification Failed:", e);
     }
 }
-
-// Start bot and HTTP listener
-startBot();
-const http = require('http');
-http.createServer((req, res) => { res.writeHead(200); res.end('Bot running'); }).listen(process.env.PORT || 3000);
