@@ -574,35 +574,6 @@ async function generatePrediction(targetEpoch) {
             displayConf = `${finalConfidence} (Try: ${upScore > downScore ? "UP" : "DOWN"})`;
         }
 
-        // --- TWEAK 4: THE EXPECTED VALUE (EV) FILTER ---
-        if (currentPred === "UP" || currentPred === "DOWN") {
-            try {
-                const liveRoundData = await contract.rounds(targetEpoch);
-                const bullPool = parseFloat(ethers.utils.formatUnits(liveRoundData.bullAmount, 18));
-                const bearPool = parseFloat(ethers.utils.formatUnits(liveRoundData.bearAmount, 18));
-                const totalPool = bullPool + bearPool;
-
-                let expectedMultiplier = 0;
-                if (totalPool > 0) {
-                    const rewardPool = totalPool * 0.97; 
-                    if (currentPred === "UP" && bullPool > 0) expectedMultiplier = rewardPool / bullPool;
-                    if (currentPred === "DOWN" && bearPool > 0) expectedMultiplier = rewardPool / bearPool;
-                }
-
-                const MINIMUM_PAYOUT = await getDynamicThreshold(); 
-                
-                if (expectedMultiplier > 0 && expectedMultiplier < MINIMUM_PAYOUT) {
-                    brainText.push(`Risk/Reward is skewed. Payout is too low (${expectedMultiplier.toFixed(2)}x). Executing SKIP protocol to preserve Expected Value.`);
-                    currentPred = "SKIP";
-                    displayConf = `${finalConfidence} (Try: ${upScore > downScore ? "UP" : "DOWN"})`;
-                } else if (expectedMultiplier >= MINIMUM_PAYOUT) {
-                    brainText.push(`Risk/Reward is favorable. Potential payout: ${expectedMultiplier.toFixed(2)}x.`);
-                }
-            } catch (error) {
-                console.warn("Could not fetch live pool sizes for EV calculation:", error.message);
-            }
-        }
-
         let laterUpProb = 50 + (ema9 > ema21 ? 10 : -10) + ((rsi - 50) * 0.4) + (recentUps > recentDowns ? 5 : -5);
         if (isNaN(laterUpProb)) laterUpProb = 50; 
         laterUpProb = Math.max(10, Math.min(90, laterUpProb));
@@ -631,6 +602,48 @@ async function generatePrediction(targetEpoch) {
 async function lockInPrediction(targetEpoch) {
     const bestData = memoryStore[`best_${targetEpoch}`];
     if (!bestData || bestData.numeric === -1) return;
+
+    // --- TWEAK 4: LATE EXPECTED VALUE (EV) FILTER ---
+    // Execute this right before lock-in so PancakeSwap pools are actually populated
+    if (bestData.current_pred === "UP" || bestData.current_pred === "DOWN") {
+        try {
+            const liveRoundData = await contract.rounds(targetEpoch);
+            const bullPool = parseFloat(ethers.utils.formatUnits(liveRoundData.bullAmount, 18));
+            const bearPool = parseFloat(ethers.utils.formatUnits(liveRoundData.bearAmount, 18));
+            const totalPool = bullPool + bearPool;
+
+            let expectedMultiplier = 0;
+            if (totalPool > 0) {
+                // PCS takes a ~3% fee, leaving 97% for the reward pool
+                const rewardPool = totalPool * 0.97;
+                if (bestData.current_pred === "UP" && bullPool > 0) expectedMultiplier = rewardPool / bullPool;
+                if (bestData.current_pred === "DOWN" && bearPool > 0) expectedMultiplier = rewardPool / bearPool;
+            }
+
+            const MINIMUM_PAYOUT = await getDynamicThreshold();
+            if (expectedMultiplier > 0 && expectedMultiplier < MINIMUM_PAYOUT) {
+                const skipReason = `Risk/Reward skewed at lock-in. Payout too low (${expectedMultiplier.toFixed(2)}x). Executing SKIP to preserve EV.`;
+                console.log(`⚠️ ${skipReason}`);
+                
+                // Override the prediction to SKIP but keep the visual UI intact
+                const originalSide = bestData.current_pred;
+                bestData.current_pred = "SKIP";
+                
+                // Format: "82.5% (Try: UP)"
+                // Make sure we only append "(Try:" if it isn't already there from Tweak 3
+                if (!bestData.current_conf.includes("(Try:")) {
+                    bestData.current_conf = `${bestData.current_conf} (Try: ${originalSide})`;
+                }
+                bestData.thought_process += ` | ${skipReason}`;
+            } else if (expectedMultiplier >= MINIMUM_PAYOUT) {
+                console.log(`✅ Risk/Reward favorable at lock-in. Potential payout: ${expectedMultiplier.toFixed(2)}x.`);
+                bestData.thought_process += ` | Final EV confirmed at ${expectedMultiplier.toFixed(2)}x.`;
+            }
+        } catch (error) {
+            console.warn("Could not fetch live pool sizes for EV calculation:", error.message);
+        }
+    }
+
     memoryStore[`locked_${targetEpoch}`] = true;
     console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.current_pred} (${bestData.current_conf})`);
     
