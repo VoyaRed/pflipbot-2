@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UpsideDownCake 🍰</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* The Full-Screen Overlay */
+        #loader-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 240, 245, 0.95); display: none; 
+            justify-content: center; align-items: center; flex-direction: column; z-index: 9999;
+        }
+        .cake-flip { font-size: 80px; animation: flip 1s infinite linear; }
+        @keyframes flip { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+
+         /* Ledger Status Colors */
+        .status-win { color: #28a745 !important; font-weight: 800; }
+        .status-loss { color: #dc3545 !important; font-weight: 800; }
+        .status-skip { color: #8f90b0 !important; font-weight: 600; }
+        
+        /* Small Direction Indicators */
+        .dir-up { color: var(--up); font-size: 0.8rem; font-weight: bold; }
+        .dir-down { color: var(--down); font-size: 0.8rem; font-weight: bold; }
+
+        @keyframes lockPop {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); box-shadow: 0 0 20px var(--primary); }
+        100% { transform: scale(1); }
+        }
+        
+        .locked-animation { 
+            animation: lockPop 0.6s ease-out; 
+            border: 3px solid var(--primary) !important; 
+        }
+        
+        :root { 
+            --bg: #fff0f5; --panel: #ffffff; --up: #31d0aa; --down: #ed4b9e; 
+            --text: #4a4a4a; --subtext: #8f90b0; --primary: #ff6b6b; 
+            --primary-glow: rgba(255, 107, 107, 0.5); --accent: #ffb347; 
+            --border: #eee; --price-bg: #fafafa; --header-bg: #f0f0f0;
+            --pattern-1: #ffb347; --pattern-2: #ff6b6b;
+            --neutral: #9e9e9e; 
+        }
+
+        body.dark-mode {
+            --bg: #1a0f14; --panel: #2d1b24; --text: #fce4ec; --subtext: #b39baf; 
+            --primary: #ff4757; --primary-glow: rgba(255, 71, 87, 0.5);
+            --accent: #ff9f43; --border: #4a2c3a; --price-bg: #24151d;
+            --header-bg: #38222d; --pattern-1: rgba(255, 159, 67, 0.15); --pattern-2: rgba(255, 71, 87, 0.15);
+            --neutral: #6c757d; 
+        }
+        
+        body { 
+            background: var(--bg); color: var(--text); font-family: 'Kanit', sans-serif; 
+            margin: 0; padding: 20px; transition: background-color 0.5s ease, color 0.5s ease;
+            background-image: radial-gradient(var(--pattern-1) 1px, transparent 1px), radial-gradient(var(--pattern-2) 1px, transparent 1px);
+            background-size: 40px 40px; background-position: 0 0, 20px 20px;
+        }
+
+        .top-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 20px; }
+        .title { margin: 0; font-weight: 800; font-size: 2rem; color: var(--primary); text-shadow: 2px 2px 0px rgba(0,0,0,0.05); grid-column: 2; text-align: center; }
+        .theme-btn { grid-column: 3; justify-self: end; background: var(--panel); color: var(--text); border: 2px solid var(--border); padding: 10px 20px; border-radius: 20px; font-family: 'Kanit', sans-serif; font-weight: 800; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .theme-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.1); border-color: var(--primary); }
+
+        .chart-box { height: 400px; width: 100%; margin-bottom: 30px; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); border: 4px solid var(--panel); box-sizing: border-box; }
+        
+        /* Restored layout to not stretch, leaving empty space */
+        .main-layout { display: grid; grid-template-columns: 1fr auto 1fr; gap: 30px; align-items: start; width: 100%; box-sizing: border-box; }
+        .column-left { display: flex; flex-direction: column; min-width: 0; }
+        .column-middle { display: flex; justify-content: center; align-items: start; min-width: 0; }
+        .column-right { display: flex; flex-direction: column; min-width: 0; }
+
+        /* Thought Box restored to fixed smaller height */
+        .thought-box {
+            background: var(--panel); border-radius: 24px; padding: 25px;
+            box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.08); border: 2px solid var(--border);
+            transition: background-color 0.5s ease, border-color 0.5s ease;
+            display: flex; flex-direction: column; height: 500px; box-sizing: border-box;
+        }
+        .thought-box h3 { margin-top: 0; color: var(--primary); font-weight: 800; display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .thought-text { font-size: 1rem; color: var(--text); line-height: 1.6; font-weight: 500; flex-grow: 1; overflow-y: auto; padding-right: 5px; }
+        .thought-timestamp { font-size: 0.8rem; color: var(--subtext); margin-top: 15px; text-align: right; font-weight: bold; }
+
+        /* Restored rounds container to align to center, creating staggered sizes */
+        .rounds-container { display: flex; flex-direction: row; justify-content: center; gap: 20px; flex-wrap: nowrap; align-items: center; margin-bottom: 0; }
+        
+        /* Cards restored to natural heights without forced flex-grow stretching */
+        .card { 
+            background: var(--panel); border-radius: 24px; width: 310px; padding: 0; 
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.08); transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .card:hover { transform: translateY(-8px); box-shadow: 0 15px 30px var(--primary-glow); }
+        
+        .old-expired, .later-card { width: 220px !important; opacity: 0.75; transform: scale(0.95); }
+        .old-expired:hover, .later-card:hover { transform: scale(1) translateY(-4px); opacity: 1; }
+
+        .card-header { padding: 15px 20px; font-weight: bold; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; letter-spacing: 1px;}
+        .card-body { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        
+        .expired { opacity: 0.85; border: 2px solid var(--border); }
+        .expired .card-header { background: var(--header-bg); color: var(--subtext); }
+        
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 var(--primary-glow); } 70% { box-shadow: 0 0 0 15px rgba(255, 107, 107, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); } }
+        .live { border: 2px solid var(--primary); transform: scale(1.02); animation: pulseGlow 2.5s infinite; z-index: 10; }
+        .live:hover { transform: scale(1.02) translateY(-8px); }
+        .live .card-header { background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; }
+        
+        .next .card-header { background: var(--primary); color: white; }
+        .later-card .card-header { background: var(--header-bg); color: var(--subtext); }
+        
+        .prediction-badge { padding: 10px 15px; border-radius: 12px; font-size: 1.4rem; font-weight: 800; width: 100%; text-align: center; box-sizing: border-box; letter-spacing: 1px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.1); }
+        .pred-up { background: var(--up); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .pred-down { background: var(--down); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .pred-waiting { background: var(--price-bg); color: var(--subtext); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.05); font-size: 1.2rem; border: 1px solid var(--border); }
+        .pred-skip-up { background: linear-gradient(90deg, var(--neutral) 50%, var(--up) 50%); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .pred-skip-down { background: linear-gradient(90deg, var(--neutral) 50%, var(--down) 50%); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+
+        .stat-row { display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; margin-bottom: 5px; color: var(--text); }
+        
+        .progress-bg { background: var(--header-bg); border-radius: 8px; height: 10px; width: 100%; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; }
+        .progress-fill { background: linear-gradient(90deg, var(--accent), var(--primary)); height: 100%; width: 0%; transition: width 1s linear; border-radius: 8px; }
+        
+        .price-box { background: var(--price-bg); border-radius: 16px; padding: 15px; width: 100%; box-sizing: border-box; text-align: left; border: 1px solid var(--border); margin-top: auto; }
+        .price-label { font-size: 0.75rem; color: var(--subtext); text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
+        .main-price { font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; }
+        .main-price.up { color: var(--up); }
+        .main-price.down { color: var(--down); }
+        .main-price.waiting { color: var(--text); }
+        .price-row { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px; }
+        .price-row span:first-child { color: var(--subtext); font-weight: 600; }
+        .price-row span:last-child { font-weight: bold; color: var(--text); }
+
+        /* Ledger restored to fixed smaller height */
+        .ledger-box { background: var(--panel); padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid var(--border); display: flex; flex-direction: column; height: 500px; box-sizing: border-box; }
+        .ledger-item { margin-bottom: 8px; background: var(--price-bg); border: 1px solid var(--border); padding: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; color: var(--text); }
+        .confidence-tag { font-size: 0.85rem; background: var(--primary-glow); padding: 4px 8px; border-radius: 6px; color: var(--text); font-weight: bold;}
+        .bet-price-label { font-size: 0.85rem; color: var(--subtext); text-align: center; margin-top: 6px; min-height: 1.2em; font-weight: 600; }
+        
+        /* Fallback for smaller monitors */
+        @media (max-width: 1600px) {
+            .main-layout { grid-template-columns: 1fr; }
+            .column-left, .column-right { max-width: 100%; }
+            .rounds-container { flex-wrap: wrap; }
+            .ledger-box, .thought-box { height: 450px; }
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .top-nav { display: flex; flex-direction: column; text-align: center; }
+            .chart-box { height: 250px; margin-bottom: 20px; }
+            .card { width: 100%; max-width: 450px; }
+            .old-expired, .later-card { width: 100% !important; max-width: 450px !important; transform: scale(1); opacity: 1; }
+            .card-header { font-size: 1rem; padding: 12px 15px; }
+            .card-body { padding: 15px; }
+            .prediction-badge { font-size: 1.2rem; padding: 8px 10px; }
+            .main-price { font-size: 1.4rem; }
+            .ledger-box { padding: 15px; }
+            .ledger-item { flex-direction: column; gap: 8px; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <div id="loader-overlay">
+        <div class="cake-flip">🎂</div>
+        <h2 style="color: #ff6b6b; font-family: 'Kanit'; margin-top: 20px;">Flipping New Round...</h2>
+    </div>
+
+    <div class="container">
+        <div class="top-nav">
+            <h1 class="title">UpsideDownCake 🍰</h1>
+            <button id="theme-toggle" class="theme-btn">🌙 Dark Chocolate</button>
+        </div>
+
+        <div id="tv-container" class="chart-box"></div>
+        
+        <div class="main-layout">
+            
+            <!-- LEFT COLUMN: Ledger -->
+            <div class="column-left">
+                <div class="ledger-box">
+                    <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 800; color: var(--primary);">UpsideDownCake Execution Ledger 🍰</h3>
+                    <div id="ledger" style="flex-grow: 1; overflow-y: auto; padding-right: 10px;"></div>
+                </div>
+            </div> 
+            
+            <!-- MIDDLE COLUMN: Cards -->
+            <div class="column-middle">
+                <div class="rounds-container">
+                    
+                    <div class="card expired old-expired">
+                        <div class="card-header">
+                            <span>Expired</span>
+                            <span id="old-prev-epoch">#---</span>
+                        </div>
+                        <div class="card-body" style="justify-content: center;">
+                            <div style="text-align: center; font-size: 0.85rem; color: var(--subtext); margin-bottom: 5px; font-weight: bold;">Bot Bet</div>
+                            <div id="old-prev-bet" class="prediction-badge pred-waiting" style="font-size: 1.1rem; padding: 6px;">---</div>
+                            
+                            <div style="text-align: center; font-size: 0.85rem; color: var(--subtext); margin: 15px 0 5px; font-weight: bold;">Result</div>
+                            <div id="old-prev-result" class="prediction-badge pred-waiting" style="font-size: 1.1rem; padding: 6px;">---</div>
+                        </div>
+                    </div>
+
+                    <div class="card expired">
+                        <div class="card-header">
+                            <span>Expired</span>
+                            <span id="prev-epoch">#---</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="prev-conf" class="confidence-tag">--%</span></div>
+                            <div style="width: 100%;">
+                                <div id="prev-bet" class="prediction-badge pred-waiting">---</div>
+                                <div id="prev-bet-price" class="bet-price-label"></div>
+                            </div>
+                            <div class="stat-row" style="margin-top: 5px;"><span style="font-weight: bold;">Result</span></div>
+                            <div id="prev-result" class="prediction-badge pred-waiting" style="padding: 6px; font-size: 1.1rem;">---</div>
+
+                            <div class="price-box">
+                                <div class="price-label">Closed Price</div>
+                                <div id="prev-close-price" class="main-price waiting">---</div>
+                                <div class="price-row">
+                                    <span>Locked Price:</span>
+                                    <span id="prev-lock-price">---</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card live">
+                        <div class="progress-bg" style="border-radius: 0; margin: 0; height: 6px;"><div id="progress-bar" class="progress-fill"></div></div>
+                        <div class="card-header">
+                            <span>▶ LIVE</span>
+                            <span id="live-epoch">#---</span>
+                        </div>
+                        <div class="card-body" style="width: 100%; box-sizing: border-box;">
+                            <div class="stat-row"><span style="font-weight: bold;">Bot Bet</span><span id="live-conf" class="confidence-tag">--%</span></div>
+                            <div style="width: 100%;">
+                                <div id="live-bet" class="prediction-badge pred-waiting">---</div>
+                                <div id="live-bet-price" class="bet-price-label"></div>
+                            </div>
+
+                            <div class="price-box">
+                                <div class="price-label">Last Price (Oracle)</div>
+                                <div id="live-last-price" class="main-price waiting">---</div>
+                                <div class="price-row">
+                                    <span>Locked Price:</span>
+                                    <span id="live-lock-price">---</span>
+                                </div>
+                                <div class="price-row">
+                                    <span>Prize Pool:</span>
+                                    <span id="live-prize-pool">---</span>
+                                </div>
+                            </div>
+                            <div id="time-left" style="text-align: center; font-weight: 800; font-size: 1.2rem; color: var(--primary);">--:--</div>
+                        </div>
+                    </div>
+
+                    <div class="card next">
+                        <div class="card-header">
+                            <span>▶ Next</span>
+                            <span id="next-epoch">#---</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="stat-row"><span style="font-weight: bold;">Bot Target</span><span id="next-conf" class="confidence-tag" style="color: var(--primary);">Calculating...</span></div>
+                            <div style="width: 100%;">
+                                <div id="bot-prediction" class="prediction-badge pred-waiting">Waiting...</div>
+                                <div id="bot-bet-price" class="bet-price-label"></div>
+                            </div>
+                            
+                            <div class="stat-row" style="margin-top: 15px;">
+                                <span style="color: var(--subtext);">RSI:</span>
+                                <span id="rsi" style="font-weight: bold;">--</span>
+                            </div>
+                            <div class="stat-row">
+                                <span style="color: var(--subtext);">MACD:</span>
+                                <span id="macd" style="font-weight: bold;">--</span>
+                            </div>
+                            
+                            <div class="price-box">
+                                <div class="price-row" style="margin: 5px 0;">
+                                    <span style="font-size: 1.1rem; color: var(--text);">Prize Pool:</span>
+                                    <span id="next-prize-pool" style="font-size: 1.1rem; color: var(--text);">---</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card next later-card">
+                        <div class="card-header">
+                            <span>🕒 Later</span>
+                            <span id="later-epoch">#---</span>
+                        </div>
+                        <div class="card-body" style="justify-content: center;">
+                            <div style="text-align: center; font-size: 0.95rem; margin-bottom: 10px; color: var(--text); font-weight: bold;">
+                                Entry starts<br><span id="later-time" style="font-size: 1.2rem; color: var(--subtext);">~05:00</span>
+                            </div>
+                            <div style="width: 100%; border-top: 1px solid var(--border); padding-top: 15px; text-align: center;">
+                                <div style="font-size: 0.85rem; color: var(--subtext); margin-bottom: 8px; font-weight: bold;">Early Likelihood</div>
+                                <div id="later-pred-badge" class="prediction-badge pred-waiting" style="font-size: 1.1rem; padding: 8px;">Evaluating...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div> 
+
+            <!-- RIGHT COLUMN: Thoughts -->
+            <div class="column-right">
+                <div class="thought-box">
+                    <h3>🧠 Inside the Bot's Brain</h3>
+                    <div id="bot-thoughts" class="thought-text">Connecting to intelligence stream...</div>
+                    <div id="thought-timestamp" class="thought-timestamp"></div>
+                </div>
+            </div>
+
+        </div> 
+    </div>
+
+    <script>
+        const themeBtn = document.getElementById('theme-toggle');
+        const currentTheme = localStorage.getItem('cakeTheme') || 'light';
+        window.hasAnimatedLock = false;
+        if (currentTheme === 'dark') {
+            document.body.classList.add('dark-mode');
+            themeBtn.innerText = '☀️ Strawberry Vanilla';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('cakeTheme', isDark ? 'dark' : 'light');
+            themeBtn.innerText = isDark ? '☀️ Strawberry Vanilla' : '🌙 Dark Chocolate';
+            initTradingView();
+        });
+
+        function initTradingView() {
+            const isDark = document.body.classList.contains('dark-mode');
+            document.getElementById('tv-container').innerHTML = ''; 
+            new TradingView.widget({ 
+                "container_id": "tv-container", 
+                "symbol": "BINANCE:BNBUSD", 
+                "interval": "5", 
+                "theme": isDark ? "dark" : "light", 
+                "autosize": true, 
+                "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"] 
+            });
+        }
+
+        const PREDICT_ADDR = "0x18B2A687610328590Bc8F2e5fEdDe3b582A49cdA";
+        const ABI = [
+            "function currentEpoch() view returns (uint256)", 
+            "function rounds(uint256) view returns (uint256 epoch, uint256 startTimestamp, uint256 lockTimestamp, uint256 closeTimestamp, int256 lockPrice, int256 closePrice, uint256 lockOracleId, uint256 closeOracleId, uint256 totalAmount, uint256 bullAmount, uint256 bearAmount, uint256 rewardBaseCalAmount, uint256 rewardAmount, bool oracleCalled)"
+        ];
+        const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+        const CHAINLINK_ABI = ["function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"];
+
+        const SUPABASE_URL = 'https://tggqamigkruvhoqkyxrq.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_HVa5hO_AyTxmsI_iIgrDBA_jSenZuSD';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let provider, contract, oracleContract, timerInterval;
+        let lastLockedPrice = 0;
+        let dynamicResultCache = {}; 
+        let lastSeenLiveEpoch = 0; 
+        let notifiedEpochs = new Set(); 
+        
+        let liveNextPred = "Waiting...";
+        let liveNextConf = "Calculating...";
+        let liveNextClass = "pred-waiting";
+
+        async function init() {
+            initTradingView(); 
+            try {
+                const nodes = [
+                    "https://bsc-rpc.publicnode.com",
+                    "https://binance.llamarpc.com",
+                    "https://bsc-dataseed.binance.org"
+                ];
+                
+                for (let url of nodes) {
+                    try {
+                        provider = new ethers.providers.JsonRpcProvider(url);
+                        contract = new ethers.Contract(PREDICT_ADDR, ABI, provider);
+                        await contract.currentEpoch(); 
+                        break;
+                    } catch (e) { }
+                }
+
+                oracleContract = new ethers.Contract(CHAINLINK_BNB_USD, CHAINLINK_ABI, provider);
+                setInterval(fetchOraclePrice, 3000);
+                fetchOraclePrice(); 
+                
+                supabaseClient.channel('custom-all-channel')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prediction_logs' }, payload => { runSyncLoop(); })
+                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prediction_logs' }, payload => { runSyncLoop(); })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'market_stats' }, payload => { runSyncLoop(); })
+                    .subscribe();
+                
+                runSyncLoop();
+            } catch (error) { 
+                setTimeout(init, 5000); 
+            }
+        }
+
+        async function fetchOraclePrice() {
+            if (!oracleContract) return;
+            try {
+                const data = await oracleContract.latestRoundData();
+                const price = (data.answer / 1e8); 
+                const el = document.getElementById('live-last-price');
+                if (el) {
+                    el.innerText = '$' + price.toFixed(4);
+                    if (lastLockedPrice > 0) {
+                        el.className = price >= lastLockedPrice ? 'main-price up' : 'main-price down';
+                    }
+                }
+            } catch (error) {}
+        }
+
+        async function updateMarketVisualsFromDB() {
+            const { data, error } = await supabaseClient.from('market_stats').select('*').eq('id', 1).maybeSingle(); 
+            if (data && !error) {
+        const rsiEl = document.getElementById('rsi');
+        const macdEl = document.getElementById('macd');
+        
+        // Update MACD
+            if (macdEl && data.macd !== null && data.macd !== undefined) {
+                let macdColor = data.macd >= 0 ? "var(--up)" : "var(--down)"; 
+                
+                // 1. Display the actual number/text on the screen
+                macdEl.textContent = Number(data.macd).toFixed(2); 
+                
+                // 2. Apply the color you calculated to the element's style
+                macdEl.style.color = macdColor;
+            }     
+            
+            // Update RSI
+            if (rsiEl && data.rsi !== null && data.rsi !== undefined) {
+                // Display the RSI text on the screen
+                rsiEl.textContent = Number(data.rsi).toFixed(2);
+            }
+        }  
+
+                const thoughtEl = document.getElementById('bot-thoughts');
+                const timeEl = document.getElementById('thought-timestamp');
+                if (thoughtEl && data.thought_process) {
+                    thoughtEl.innerText = data.thought_process;
+                    const timestamp = new Date(data.updated_at).toLocaleTimeString();
+                    timeEl.innerText = `Last updated: ${timestamp}`;
+                }
+
+                if (data.current_pred && data.current_pred !== "NONE") {
+                    liveNextPred = data.current_pred;
+                    liveNextConf = data.current_conf || "0%"; 
+                    
+                    if (data.current_pred === "SKIP") {
+                        if (data.current_conf && String(data.current_conf).includes("UP")) liveNextClass = "pred-skip-up";
+                        else if (data.current_conf && String(data.current_conf).includes("DOWN")) liveNextClass = "pred-skip-down";
+                        else liveNextClass = "pred-waiting";
+                    } else {
+                        liveNextClass = `pred-${String(data.current_pred).toLowerCase()}`;
+                    }
+                } else {
+                    liveNextPred = "Waiting...";
+                    liveNextConf = "Calculating...";
+                    liveNextClass = "pred-waiting";
+                }
+                
+                const laterBadge = document.getElementById('later-pred-badge');
+                if (laterBadge && data.later_pred && data.later_pred !== "NONE") {
+                    laterBadge.innerText = `${data.later_pred} ${data.later_conf || 0}%`;
+                    laterBadge.className = `prediction-badge pred-${String(data.later_pred).toLowerCase()}`;
+                }
+            }
+        
+        
+        function startTimer(targetTimestamp) {
+            clearInterval(timerInterval);
+            const bar = document.getElementById('progress-bar');
+            const text = document.getElementById('time-left');
+            const laterText = document.getElementById('later-time');
+        
+            timerInterval = setInterval(() => {
+                const secondsLeft = targetTimestamp - Math.floor(Date.now() / 1000);
+                const nextCard = document.querySelector('.card.next:not(.later-card)');
+        
+                if (nextCard) {
+                    if (secondsLeft === 13 && !window.hasAnimatedLock) {
+                        nextCard.classList.add('locked-animation');
+                        window.hasAnimatedLock = true;
+                    }
+                    if (secondsLeft > 280) {
+                        window.hasAnimatedLock = false;
+                        nextCard.classList.remove('locked-animation');
+                    }
+                }
+        
+                if (secondsLeft <= 0) { 
+                    text.innerText = "00:00"; 
+                    laterText.innerText = "~00:00";
+                    bar.style.width = "100%"; 
+                    clearInterval(timerInterval); 
+                    
+                    const overlay = document.getElementById('loader-overlay');
+                    if (overlay) {
+                        overlay.style.display = 'flex';
+                        setTimeout(() => { if (overlay.style.display === 'flex') overlay.style.display = 'none'; }, 10000);
+                    }
+                } else {
+                    const formattedTime = `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
+                    text.innerText = formattedTime;
+                    laterText.innerText = `~${formattedTime}`; 
+                    bar.style.width = `${Math.max(0, Math.min(100, ((300 - secondsLeft) / 300) * 100))}%`;
+                }
+            }, 1000);
+        }
+
+        async function runSyncLoop() {
+            try {
+                const currentEpoch = (await contract.currentEpoch()).toNumber();
+                const laterEpoch = currentEpoch + 1;
+                const liveEpoch = currentEpoch > 0 ? currentEpoch - 1 : 0;
+                const prevEpoch = currentEpoch > 1 ? currentEpoch - 2 : 0;
+                const oldPrevEpoch = currentEpoch > 2 ? currentEpoch - 3 : 0;
+
+                if (lastSeenLiveEpoch !== 0 && liveEpoch > lastSeenLiveEpoch) {
+                    const overlay = document.getElementById('loader-overlay');
+                    if (overlay) overlay.style.display = 'none';
+                }
+
+                document.getElementById("later-epoch").innerText = `#${laterEpoch}`;
+                document.getElementById("next-epoch").innerText = `#${currentEpoch}`;
+                if (liveEpoch > 0) document.getElementById("live-epoch").innerText = `#${liveEpoch}`;
+                if (prevEpoch > 0) document.getElementById("prev-epoch").innerText = `#${prevEpoch}`;
+                if (oldPrevEpoch > 0) document.getElementById("old-prev-epoch").innerText = `#${oldPrevEpoch}`;
+
+                const nextRoundData = await contract.rounds(currentEpoch);
+                document.getElementById('next-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(nextRoundData.totalAmount, 18)).toFixed(4)} BNB`;
+
+                if (liveEpoch > 0) {
+                    const liveRound = await contract.rounds(liveEpoch);
+                    const lockPrice = parseFloat(ethers.utils.formatUnits(liveRound.lockPrice, 8)).toFixed(4);
+                    lastLockedPrice = parseFloat(lockPrice); 
+                    document.getElementById('live-lock-price').innerText = `$${lockPrice}`;
+                    document.getElementById('live-prize-pool').innerText = `${parseFloat(ethers.utils.formatUnits(liveRound.totalAmount, 18)).toFixed(4)} BNB`;
+                    startTimer(liveRound.closeTimestamp.toNumber());
+                }
+
+                if (prevEpoch > 0) {
+                    const prevRound = await contract.rounds(prevEpoch);
+                    if (prevRound.oracleCalled) {
+                        const lockPrice = parseFloat(ethers.utils.formatUnits(prevRound.lockPrice, 8));
+                        const closePrice = parseFloat(ethers.utils.formatUnits(prevRound.closePrice, 8));
+                        document.getElementById('prev-lock-price').innerText = `$${lockPrice.toFixed(4)}`;
+                        const closeEl = document.getElementById('prev-close-price');
+                        closeEl.innerText = `$${closePrice.toFixed(4)}`;
+                        closeEl.className = `main-price ${closePrice >= lockPrice ? 'up' : 'down'}`;
+                    }
+                }
+
+                await updateMarketVisualsFromDB();
+
+                const { data, error } = await supabaseClient
+                .from('prediction_logs')
+                .select('*')
+                 .order('epoch_id', { ascending: false })
+                 .limit(10);
+                if (data) {
+                    for (let log of data) {
+                        if (log.epoch_id <= prevEpoch) {
+                            if (dynamicResultCache[log.epoch_id]) {
+                                log.result = dynamicResultCache[log.epoch_id];
+                            } else {
+                                try {
+                                    const round = await contract.rounds(log.epoch_id);
+                                    if (round.oracleCalled) {
+                                        const lockP = parseFloat(ethers.utils.formatUnits(round.lockPrice, 8));
+                                        const closeP = parseFloat(ethers.utils.formatUnits(round.closePrice, 8));
+                                        const actualMarketResult = closeP > lockP ? "UP" : "DOWN";
+                                        let finalStatus = log.predicted_side === "SKIP" ? "SKIP/" + actualMarketResult : (log.predicted_side === actualMarketResult ? "WIN" : "LOSS");
+                                        log.result = finalStatus;
+                                        dynamicResultCache[log.epoch_id] = finalStatus; 
+                                    }
+                                } catch (e) { }
+                            }
+                        }
+                    }
+                    renderDashboardFromDB(data, currentEpoch, liveEpoch, prevEpoch, oldPrevEpoch);
+                }
+            } catch (error) { console.warn("Sync Error:", error); } 
+
+            setTimeout(runSyncLoop, 5000);
+        }
+
+        function getActualBetInfo(log) {
+            if (!log || !log.predicted_side || log.predicted_side === "NONE") return { text: "---", class: "pred-waiting" };
+            if (log.predicted_side === "SKIP") {
+                // Changed the text to just "SKIP" but kept your custom classes so it still looks nice!
+                if (log.confidence && String(log.confidence).includes("Try: UP")) return { text: "SKIP", class: "pred-skip-up" };
+                else if (log.confidence && String(log.confidence).includes("Try: DOWN")) return { text: "SKIP", class: "pred-skip-down" };
+                return { text: "SKIP", class: "pred-waiting" };
+            }
+            return { text: log.predicted_side, class: `pred-${String(log.predicted_side).toLowerCase()}` };
+        }
+
+        function getActualResultInfo(log) {
+            if (!log || !log.result || log.result === "PENDING" || !log.predicted_side) return { text: "---", class: "pred-waiting" };
+            let actualMarket = "---";
+            if (log.result === "WIN") actualMarket = log.predicted_side;
+            else if (log.result === "LOSS") actualMarket = (log.predicted_side === "UP") ? "DOWN" : "UP";
+            else if (log.result === "SKIP/UP") actualMarket = "UP";
+            else if (log.result === "SKIP/DOWN") actualMarket = "DOWN";
+
+            if (actualMarket === "UP") return { text: "UP", class: "pred-up" };
+            if (actualMarket === "DOWN") return { text: "DOWN", class: "pred-down" };
+            return { text: "---", class: "pred-waiting" };
+        }
+
+        function renderDashboardFromDB(logs, nextEpoch, liveEpoch, prevEpoch, oldPrevEpoch) {
+            document.getElementById('ledger').innerHTML = ''; 
+            const officialStatuses = ['WIN', 'LOSS', 'SKIP/UP', 'SKIP/DOWN'];
+            const resolvedLogs = logs.filter(log => officialStatuses.includes(log.result));
+            
+            const recent15Mixed = resolvedLogs.slice(0, 15);
+            let mixedWins = recent15Mixed.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+            const mixedWinRate = recent15Mixed.length > 0 ? ((mixedWins / recent15Mixed.length) * 100).toFixed(1) : "0.0";
+            
+            const trendLogs = resolvedLogs.filter(log => {
+                if (!log.confidence) return false; 
+                const match = String(log.confidence).match(/(\d+(?:\.\d+)?)/);
+                return match ? parseFloat(match[1]) >= 55.0 : false;
+            });
+            const recent15Trend = trendLogs.slice(0, 15);
+            let trendWins = recent15Trend.filter(l => l.result === 'WIN' || l.result === 'SKIP/UP').length;
+            const trendWinRate = recent15Trend.length > 0 ? ((trendWins / recent15Trend.length) * 100).toFixed(1) : "0.0";
+            
+            const ledgerHeader = document.querySelector('.ledger-box h3');
+            if (ledgerHeader) {
+                ledgerHeader.style.display = 'flex';
+                ledgerHeader.style.justifyContent = 'space-between';
+                ledgerHeader.style.alignItems = 'center';
+                ledgerHeader.style.flexWrap = 'wrap';
+                ledgerHeader.style.gap = '10px';
+                ledgerHeader.innerHTML = `
+                    <span>UpsideDownCake Execution Ledger 🍰</span>
+                    <div style="display: flex; gap: 8px; font-size: 0.85rem; font-weight: 600;">
+                        <span style="background: #ffb347; color: white; padding: 5px 12px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Mixed Market: ${mixedWinRate}%</span>
+                        <span style="background: var(--up); color: white; padding: 5px 12px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Trend Market: ${trendWinRate}%</span>
+                    </div>
+                `;
+            }
+
+            logs.forEach(log => renderLedgerRow(log.epoch_id, log.predicted_side, log.result, log.confidence));
+
+            const nextLog = logs.find(l => l.epoch_id == nextEpoch);
+            const liveLog = logs.find(l => l.epoch_id == liveEpoch);
+            const prevLog = logs.find(l => l.epoch_id == prevEpoch);
+            const oldPrevLog = logs.find(l => l.epoch_id == oldPrevEpoch);
+
+            if (liveLog && liveLog.is_locked) {
+                const liveCard = document.querySelector('.card.live');
+                if (liveCard && !liveCard.classList.contains('locked-animation')) {
+                    liveCard.classList.add('locked-animation');
+                    document.querySelector('.live .card-header span:first-child').innerText = '🔒 LOCKED';
+                }
+            }
+            if (prevLog && prevLog.result && officialStatuses.includes(prevLog.result)) {
+                if (!notifiedEpochs.has(prevEpoch)) {
+                    if (prevLog.result === 'WIN' || prevLog.result === 'SKIP/UP') {
+                        triggerWinEffect();
+                    } else if (prevLog.result === 'LOSS' || prevLog.result === 'SKIP/DOWN') {
+                        const expiredCard = document.querySelector('.card.expired:not(.old-expired)');
+                        if (expiredCard) {
+                            expiredCard.classList.add('loss-shake');
+                            setTimeout(() => expiredCard.classList.remove('loss-shake'), 500);
+                        }
+                    }
+                    notifiedEpochs.add(prevEpoch);
+                }
+            }
+
+            if (oldPrevLog) {
+                const betInfo = getActualBetInfo(oldPrevLog);
+                const betEl = document.getElementById('old-prev-bet');
+                betEl.innerText = betInfo.text;
+                betEl.className = `prediction-badge ${betInfo.class}`;
+                
+                const resInfo = getActualResultInfo(oldPrevLog);
+                const resEl = document.getElementById('old-prev-result');
+                resEl.innerText = resInfo.text;
+                resEl.className = `prediction-badge ${resInfo.class}`;
+            }
+
+            if (prevLog) {
+                const betInfo = getActualBetInfo(prevLog);
+                const betEl = document.getElementById('prev-bet');
+                betEl.innerText = betInfo.text;
+                betEl.className = `prediction-badge ${betInfo.class}`;
+                document.getElementById('prev-conf').innerText = prevLog.confidence || "--%";
+                
+                const resInfo = getActualResultInfo(prevLog);
+                const resEl = document.getElementById('prev-result');
+                resEl.innerText = resInfo.text;
+                resEl.className = `prediction-badge ${resInfo.class}`;
+            }
+
+            if (liveLog) {
+                const betInfo = getActualBetInfo(liveLog);
+                const betEl = document.getElementById('live-bet');
+                betEl.innerText = betInfo.text;
+                betEl.className = `prediction-badge ${betInfo.class}`;
+                document.getElementById('live-conf').innerText = liveLog.confidence || "--%";
+            } else {
+                const betEl = document.getElementById('live-bet');
+                betEl.innerText = "Waiting...";
+                betEl.className = "prediction-badge pred-waiting";
+                document.getElementById('live-conf').innerText = "--%";
+            }
+
+            if (nextLog) {
+                const betInfo = getActualBetInfo(nextLog);
+                const predEl = document.getElementById('bot-prediction');
+                predEl.innerText = `🔒 FINAL: ${betInfo.text}`;
+                predEl.className = `prediction-badge ${betInfo.class}`;
+                document.getElementById('next-conf').innerText = nextLog.confidence || "Calculating...";
+            } else {
+                const predEl = document.getElementById('bot-prediction');
+                predEl.innerText = `⏳ EST: ${liveNextPred}`;
+                predEl.className = `prediction-badge ${liveNextClass}`;
+                document.getElementById('next-conf').innerText = liveNextConf;
+            }
+        }
+        
+        function renderLedgerRow(epoch, predicted, result, confidence) {
+            const ledger = document.getElementById('ledger');
+            const safeResult = result || "PENDING";
+            const safePredicted = predicted || "---";
+            const safeConf = confidence || "--%";
+        
+            let resClass = "status-skip";
+            if (safeResult.includes("WIN")) resClass = "status-win";
+            else if (safeResult.includes("LOSS")) resClass = "status-loss";
+            
+            let dirClass = safePredicted === "UP" ? "dir-up" : (safePredicted === "DOWN" ? "dir-down" : "");
+            
+            // 1. Check if a ledger row for this epoch already exists
+let existingLedgerItem = document.getElementById(`ledger-epoch-${epoch}`);
+
+            // 2. Build the inner HTML for the row
+            let ledgerContent = `
+                <div style="flex: 1;">
+                    <strong>Epoch #${epoch}</strong> 
+                    <span class="confidence-tag" style="margin-left: 10px; font-size: 0.75rem;">${safeConf}</span>
+                </div>
+                <div style="flex: 1; text-align: right;">
+                    <span class="${dirClass}">Bet: ${safePredicted}</span> 
+                    &nbsp;—&nbsp; 
+                    <span class="${resClass}" style="text-transform: uppercase;">${safeResult}</span>
+                </div>
+            `;
+            
+            if (existingLedgerItem) {
+                // 3a. If the row already exists, just update its contents with the latest prediction
+                existingLedgerItem.innerHTML = ledgerContent;
+            } else {
+                // 3b. If it doesn't exist yet, create a new row
+                let newItem = document.createElement('div');
+                newItem.className = 'ledger-item';
+                newItem.id = `ledger-epoch-${epoch}`; // Assign the unique ID here
+                newItem.innerHTML = ledgerContent;
+                
+                // Append the new item to the ledger
+                ledger.appendChild(newItem); 
+            }
+        }
+
+        function triggerWinEffect() {
+            var duration = 3 * 1000; var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random() * (0.3 - 0.1) + 0.1, y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random() * (0.9 - 0.7) + 0.7, y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
