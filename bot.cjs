@@ -118,11 +118,61 @@ async function startBot() {
         console.log("✅ Connected to BSC successfully.");
         runLoop();
     } catch (error) {
-        if (error.message.includes('418') || error.message.includes('429')) {
-            let sleepDurationMs = 5 * 60 * 1000;
-            let penaltySource = "Default Fallback";
+        const errorMsg = error.message || "";
+        const headers = error.response?.headers || error.responseHeaders;
 
-            const headers = error.response?.headers || error.responseHeaders;
+        if (errorMsg.includes('418')) {
+            // 🛑 418: IP AUTO-BANNED
+            console.error(`🛑 [HTTP 418] IP Auto-Banned: Binance has temporarily banned your IP.`);
+            
+            let baseBanDurationMs = 5 * 60 * 1000; // Default fallback to 5 minutes
+            let headerCode = "None provided";
+            
+            if (headers) {
+                // Check standard retry headers or Binance's specific banned-until header
+                const rawHeader = typeof headers.get === 'function' 
+                    ? headers.get('retry-after') || headers.get('Retry-After') || headers.get('x-mbx-banned-until')
+                    : headers['retry-after'] || headers['Retry-After'] || headers['x-mbx-banned-until'];
+                    
+                if (rawHeader) {
+                    headerCode = rawHeader;
+                    const parsedVal = parseInt(rawHeader, 10);
+                    
+                    if (!isNaN(parsedVal)) {
+                        // If it's a huge number (13 digits), it's a Unix timestamp in milliseconds
+                        if (parsedVal > 1000000000000) { 
+                            baseBanDurationMs = Math.max(0, parsedVal - Date.now());
+                        } 
+                        // If it's a 10-digit number, it's a Unix timestamp in seconds
+                        else if (parsedVal > 1000000000) {
+                            baseBanDurationMs = Math.max(0, (parsedVal * 1000) - Date.now());
+                        } 
+                        // Otherwise, it's just a standard "Retry-After" in seconds
+                        else {
+                            baseBanDurationMs = parsedVal * 1000;
+                        }
+                    }
+                }
+            }
+
+            // Add the 5 minutes (300,000 ms) safety padding on top of the ban
+            const paddingMs = 5 * 60 * 1000; 
+            const totalSleepMs = baseBanDurationMs + paddingMs;
+            binanceSleepUntil = Date.now() + totalSleepMs;
+            
+            console.error(`   -> 🚨 MODERATOR ALERT 🚨`);
+            console.error(`   -> Received Header/UNIX Code: ${headerCode}`);
+            console.error(`   -> Translated Ban Duration: ${(baseBanDurationMs / 1000 / 60).toFixed(2)} minutes`);
+            console.error(`   -> Adding 5-minute safety buffer...`);
+            console.error(`   -> Total Sleep Mode Duration: ${(totalSleepMs / 1000 / 60).toFixed(2)} minutes`);
+            
+            setTimeout(startBot, totalSleepMs);
+
+        } else if (errorMsg.includes('429')) {
+            // ⚠️ 429: TOO MANY REQUESTS (Rate Limited)
+            console.error(`⚠️ [HTTP 429] Rate Limit Hit: Too Many Requests.`);
+            
+            let sleepDurationMs = 60 * 1000; // Default fallback to 1 minute
             
             if (headers) {
                 const rawHeader = typeof headers.get === 'function' 
@@ -131,21 +181,19 @@ async function startBot() {
                     
                 if (rawHeader) {
                     const retrySeconds = parseInt(rawHeader, 10);
-                    if (!isNaN(retrySeconds)) {
+                    // Ensure it's not a Unix timestamp before treating it as seconds
+                    if (!isNaN(retrySeconds) && retrySeconds < 1000000000) { 
                         sleepDurationMs = retrySeconds * 1000;
-                        penaltySource = "Exact Binance Header";
                     }
                 }
             }
 
             binanceSleepUntil = Date.now() + sleepDurationMs;
-            const sleepMinutes = (sleepDurationMs / 1000 / 60).toFixed(2);
-
-            console.error(`🚨 Binance Ban/Rate Limit Detected!`);
-            console.error(`   -> Source: ${penaltySource}`);
-            console.error(`   -> Entering Sleep Mode for ${sleepMinutes} minutes.`);
+            console.error(`   -> Cooling down for ${(sleepDurationMs / 1000 / 60).toFixed(2)} minutes.`);
             setTimeout(startBot, sleepDurationMs);
+
         } else {
+            // ❌ ALL OTHER ERRORS
             console.error(`❌ Initialization failed (Error: ${error.message}). Retrying in 10s...`);
             setTimeout(startBot, 10000);
         }
