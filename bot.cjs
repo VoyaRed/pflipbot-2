@@ -669,7 +669,8 @@ async function lockInPrediction(targetEpoch) {
         predicted_side: bestData.current_pred, 
         result: 'PENDING',
         confidence: bestData.current_conf,
-        is_locked: true,        
+        is_locked: true,
+        thought_process: bestData.thought_process,
     }], { 
         onConflict: 'epoch_id' 
     });
