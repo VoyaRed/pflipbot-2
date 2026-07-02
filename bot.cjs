@@ -269,6 +269,11 @@ async function checkRound() {
     }
 
     if (secondsLeft <= 33 && secondsLeft > 0 && !memoryStore[`locked_${currentEpoch}`]) {
+        
+        // 🔥 FORCE A FINAL SCAN RIGHT BEFORE LOCK-IN
+        console.log(`⚡ Executing absolute final scan right before lock-in...`);
+        await generatePrediction(currentEpoch);
+
         if (!memoryStore[`best_${currentEpoch}`]) {
             console.warn(`⚠️ Failsafe triggered: No prediction generated for #${currentEpoch}. Forcing fallback direction prediction.`);
             memoryStore[`best_${currentEpoch}`] = {
