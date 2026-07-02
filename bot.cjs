@@ -642,7 +642,7 @@ async function lockInPrediction(targetEpoch) {
                 bestData.thought_process += ` | ${skipReason}`;
             } else if (expectedMultiplier >= MINIMUM_PAYOUT) {
                 console.log(`✅ Risk/Reward favorable at lock-in. Potential payout: ${expectedMultiplier.toFixed(2)}x.`);
-                bestData.thought_process += ` | Final EV confirmed at ${expectedMultiplier.toFixed(2)}x.`;
+                bestData.thought_process += ` | Payout at time of bet: ${expectedMultiplier.toFixed(2)}x.`;
             }
         } catch (error) {
             console.warn("Could not fetch live pool sizes for EV calculation:", error.message);
