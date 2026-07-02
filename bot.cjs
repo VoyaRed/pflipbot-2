@@ -647,7 +647,7 @@ async function lockInPrediction(targetEpoch) {
     memoryStore[`locked_${targetEpoch}`] = true;
     console.log(`\n🔒 ROUND LIVE! Locking in best prediction for Epoch #${targetEpoch}: ${bestData.current_pred} (${bestData.current_conf})`);
     
-    if (bestData.numeric >= 75.0 && bestData.current_pred !== "SKIP") {
+    if (bestData.numeric >= 65.0 && bestData.current_pred !== "SKIP") {
         const webhookUrl = "https://discord.com/api/webhooks/1520463983998537800/T1xaGGZJ7YA_aw7JnbVKkyf9HwWta8D3W3VbuDhw5_vEiBtrqKqnzG37VIKH9WcwABx8";
         fetch(webhookUrl, {
             method: 'POST',
